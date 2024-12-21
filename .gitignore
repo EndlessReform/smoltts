@@ -1,2 +1,4 @@
 .venv
 dataset/encoded_dataset
+dataset/tokenized_dataset
+checkpoints
