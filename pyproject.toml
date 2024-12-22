@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smoltts"
+version = "0.1.0"
+description = "A simple DualAR TTS model trained on LJSpeech"
+authors = [{ name = "Jacob Keisling", email = "jacob@keisling.me" }]
+readme = "README.md"
+license = { file = "LICENSE" }
+dependencies = [
+    # Add your runtime dependencies here
+    "numpy",  # Example dependency
+    "pandas",
+]
+
+[tool.setuptools]
+packages = ["model"]

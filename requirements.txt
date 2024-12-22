@@ -2,3 +2,5 @@ datasets
 ipykernel
 transformers
 torch
+safetensors
+setuptools
