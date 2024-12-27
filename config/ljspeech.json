@@ -1,0 +1,21 @@
+{
+    "project_name": "ljspeech_train",
+    "checkpoint_path": "../checkpoints",
+    "model_path": "pretrained_model",
+    "batch_size": 32,
+    "max_epochs": 25,
+    "num_workers": 4,
+    "gradient_clip": 1.0,
+    "learning_rate": 3e-4,
+    "weight_decay": 0.0,
+    "betas": [
+        0.9,
+        0.95
+    ],
+    "eps": 1e-5,
+    "val_every_n_steps": 100,
+    "save_every_n_steps": 500,
+    "max_sequence_length": 512,
+    "use_bf16": true,
+    "use_wandb": true
+}

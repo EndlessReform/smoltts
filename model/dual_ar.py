@@ -232,19 +232,50 @@ class BaseTransformer(nn.Module):
                 dtype=dtype,
             )
 
+    # def embed(self, x: Tensor) -> Tensor:
+    #     # Start with base token embedding
+    #     token_embed = self.embeddings(x[:, 0])
+
+    #     # Get all codebook embeddings
+    #     embeds = []
+    #     semantic_token_ids_tensor = torch.tensor(
+    #         self.semantic_token_ids, device=x.device
+    #     )
+
+    #     for i in range(self.config.num_codebooks):
+    #         emb = self.codebook_embeddings(x[:, i + 1] + i * self.config.codebook_size)
+    #         embeds.append(emb)
+
+    #     # Stack and sum codebook embeddings
+    #     vq_embeds_sum = torch.stack(embeds, dim=1).sum(dim=1)
+
+    #     # Mask summed embeddings where we don't have semantic tokens
+    #     vq_embeds_sum[~torch.isin(x[:, 0], semantic_token_ids_tensor)] = 0
+
+    #     # Actually USE the embeddings this time 🤦
+    #     return token_embed + vq_embeds_sum
     def embed(self, x: Tensor) -> Tensor:
-        vocab_embeds = [self.embeddings(x[:, 0])]
+        # Start with base token embedding
+        token_embed = self.embeddings(x[:, 0])
+
+        # Get all codebook embeddings
+        embeds = []
+        semantic_token_ids_tensor = torch.tensor(
+            self.semantic_token_ids, device=x.device
+        )
+
         for i in range(self.config.num_codebooks):
             emb = self.codebook_embeddings(x[:, i + 1] + i * self.config.codebook_size)
-            semantic_token_ids_tensor = torch.tensor(
-                self.semantic_token_ids, device=x.device
-            )
-            emb[~torch.isin(x[:, 0], semantic_token_ids_tensor)] = 0
+            embeds.append(emb)
 
-        x = torch.stack(vocab_embeds, dim=3)
-        x = x.sum(dim=3)
+        # Stack and sum codebook embeddings
+        vq_embeds_sum = torch.stack(embeds, dim=1).sum(dim=1)
 
-        return x
+        # Mask summed embeddings where we don't have semantic tokens
+        vq_embeds_sum[~torch.isin(x[:, 0], semantic_token_ids_tensor)] = 0
+
+        # Actually USE the embeddings this time 🤦
+        return token_embed + vq_embeds_sum
 
     def forward(
         self,
