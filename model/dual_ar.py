@@ -265,11 +265,13 @@ class BaseTransformer(nn.Module):
         )
 
         for i in range(self.config.num_codebooks):
-            emb = self.codebook_embeddings(x[:, i + 1] + i * self.config.codebook_size)
+            offset = x[:, i + 1] + i * self.config.codebook_size
+            emb = self.codebook_embeddings(offset)
             embeds.append(emb)
 
         # Stack and sum codebook embeddings
-        vq_embeds_sum = torch.stack(embeds, dim=1).sum(dim=1)
+        vq_embeds_stack = torch.stack(embeds, dim=1)
+        vq_embeds_sum = vq_embeds_stack.sum(dim=1)
 
         # Mask summed embeddings where we don't have semantic tokens
         vq_embeds_sum[~torch.isin(x[:, 0], semantic_token_ids_tensor)] = 0

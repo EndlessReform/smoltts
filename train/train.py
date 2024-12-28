@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from typing import Tuple
 from pydantic import BaseModel
 import os
+from transformers import AutoTokenizer
 
 
 class TrainingConfig(BaseModel):
@@ -65,19 +66,12 @@ def collate_fn(batch):
     and "labels" shape [9, T].
     We pad them into [B, 9, T_max].
     """
-    # if not hasattr(collate_fn, "printed_debug"):
-    #     print("First batch debug:")
-    #     print(" - tokens shape:", batch[0]["tokens"].shape)
-    #     print(" - labels shape:", batch[0]["labels"].shape)
-    #     print("Sample row=0, first 20 labels:", batch[0]["labels"][0, :20])
-    #     print("Sample row=1, first 20 labels:", batch[0]["labels"][1, :20])
-    #     collate_fn.printed_debug = True
-
     max_input_len = max(item["tokens"].shape[1] for item in batch)
 
     B = len(batch)
     # We'll create padded arrays:
-    tokens = torch.full((B, 9, max_input_len), 2, dtype=torch.long)  # 2=some <PAD>
+    tokens = torch.full((B, 9, max_input_len), 0, dtype=torch.long)  # 2=some <PAD>
+    tokens[:, 0, :] = 2
     labels = torch.full(
         (B, 9, max_input_len), -100, dtype=torch.long
     )  # default is ignore_index
@@ -127,6 +121,10 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
         [
             {"params": weight_decay_params, "weight_decay": config.weight_decay},
             {"params": no_decay_params, "weight_decay": 0.0},
+            {
+                "params": [p for n, p in model.named_parameters() if "fast_" in n],
+                "lr": config.learning_rate * 5.0,
+            },  # Just the fast_ params
         ],
         lr=config.learning_rate,
         betas=config.betas,
@@ -137,13 +135,23 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
     global_step = 0
     os.makedirs(config.checkpoint_path, exist_ok=True)
 
+    tokenizer = AutoTokenizer.from_pretrained("../checkpoints/smoltts")
+
     for epoch in range(config.max_epochs):
         model.train()
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
 
         for batch in progress_bar:
-            # np.save("tokens_batch_1.npy", batch["tokens"].numpy())
+            np.save("tokens_batch_1.npy", batch["tokens"].numpy())
             # Move batch to device
+            # print(tokenizer.decode(batch["tokens"][0, 0, :].to("cpu").flatten()))
+            # label_tokens_ex = batch["labels"][0, 0, :].to("cpu").flatten()
+            # print(
+            #     tokenizer.decode(
+            #         torch.where(label_tokens_ex == -100, 6, label_tokens_ex)
+            #     )
+            # )
+
             tokens = batch["tokens"].to(device)
             labels = batch["labels"].to(device)
             # Create trivial input tokens
@@ -199,7 +207,6 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
             # )
 
             loss = base_loss + semantic_loss
-            # loss = semantic_loss
 
             # Backward pass
             optimizer.zero_grad()
@@ -307,7 +314,7 @@ def main():
     model = model.to(torch.bfloat16)
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
-    # model = torch.compile(model)
+    model = torch.compile(model)
 
     # Start training
     train_loop(model, train_ds, val_ds, config, device)
