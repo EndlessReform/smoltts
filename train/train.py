@@ -53,7 +53,7 @@ def load_config(path: str) -> TrainingConfig:
 
 
 def load_splits(
-    path="../dataset/tokenized_libritts_bijection",
+    path="../dataset/tokenized_libritts",
 ) -> Tuple[Dataset, Dataset]:
     # TODO stop hard-coding this once we experiment with encodings
     print(f"Loading dataset from {path}")
