@@ -41,6 +41,7 @@ class TrainingConfig(BaseModel):
     max_sequence_length: int = 512  # Much smaller than original 4096 for LJSpeech
     use_bf16: bool = True
     use_wandb: bool = False
+    use_pretrained: bool = True
 
 
 def load_config(path: str) -> TrainingConfig:
@@ -51,13 +52,20 @@ def load_config(path: str) -> TrainingConfig:
     return TrainingConfig(**config_dict)
 
 
-def load_splits(path="../dataset/tokenized_dataset") -> Tuple[Dataset, Dataset]:
-    # TODO stop hard-coding this once we move off LJSpeech
+def load_splits(
+    path="../dataset/tokenized_libritts_bijection",
+) -> Tuple[Dataset, Dataset]:
+    # TODO stop hard-coding this once we experiment with encodings
+    print(f"Loading dataset from {path}")
     dataset = load_from_disk(path)
-    dataset["full"].shuffle(42)
-    split_dataset = dataset["full"].train_test_split(test_size=0.1, seed=42)
-    train_dataset = split_dataset["train"]
-    val_dataset = split_dataset["test"]
+    if "full" in list(dataset.keys()):
+        dataset["full"].shuffle(42)
+        split_dataset = dataset["full"].train_test_split(test_size=0.1, seed=42)
+        train_dataset = split_dataset["train"]
+        val_dataset = split_dataset["test"]
+    else:
+        train_dataset = dataset["train"].shuffle(42)
+        val_dataset = dataset["val"]
     return train_dataset, val_dataset
 
 
@@ -377,14 +385,14 @@ def validate(model, val_loader, device):
 
 
 def main():
-    config = load_config("../config/ljspeech.json")
+    config = load_config("../config/librispeech.json")
     print("Loading datasets")
     train_ds, val_ds = load_splits()
 
     # Load pretrained model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = DualARTransformer.from_pretrained(
-        "../checkpoints/smoltts_init", load_weights=False
+        "../checkpoints/smoltts_init", load_weights=config.use_pretrained
     )
     # freeze_base_trunk(model)
     model = model.to(device)
