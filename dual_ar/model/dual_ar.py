@@ -398,6 +398,7 @@ class BaseTransformer(nn.Module):
     def from_pretrained(
         path: str,
         load_weights: bool = False,
+        weight_override=None,
         max_length: Optional[int] = None,
         rope_base: Optional[int] = None,
     ) -> "BaseTransformer":
@@ -414,7 +415,7 @@ class BaseTransformer(nn.Module):
 
         tokenizer = AutoTokenizer.from_pretrained(str(path))
 
-        # TODO: loggign
+        # TODO: logging
         print(f"Loading model from {path}, config: {config}")
         model = model_cls(config, tokenizer=tokenizer)
 
