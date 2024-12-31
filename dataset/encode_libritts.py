@@ -90,9 +90,9 @@ def main():
 
     # The splits we want to process
     all_splits = [
-        # "dev.clean",
-        # "test.clean",
-        # "train.clean.100",
+        "dev.clean",
+        "test.clean",
+        "train.clean.100",
         "train.clean.360",
     ]
 
