@@ -1,8 +1,12 @@
 datasets
+einops
+huggingface_hub
 ipykernel
+librosa
 python-dotenv
 transformers
 torch
 safetensors
 setuptools
+soundfile
 wandb

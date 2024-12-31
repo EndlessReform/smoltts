@@ -1,4 +1,4 @@
-from model.dual_ar import DualARTransformer
+from dual_ar.model.dual_ar import DualARTransformer
 from datasets import load_from_disk, Dataset
 from einops import rearrange
 import torch
