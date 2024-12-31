@@ -1,6 +1,8 @@
 datasets
 ipykernel
+python-dotenv
 transformers
 torch
 safetensors
 setuptools
+wandb

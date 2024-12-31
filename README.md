@@ -7,3 +7,7 @@ This repo is a personal laboratory for training fully autoregressive text-audio 
 Models trained here will be compatible with my DualAR [fish-speech.rs](https://github.com/EndlessReform/fish-speech.rs/blob/main/README.md) inference engine.
 
 Please do not expect anything here to be usable currently. Full documentation will come once an early artifact is good enough to release.
+
+## Datasets
+
+- [LibriTTS-R](https://huggingface.co/datasets/jkeisling/libritts-r-mimi) encoded with [Mimi](https://huggingface.co/kyutai/mimi) codec. ~460 hours of data.

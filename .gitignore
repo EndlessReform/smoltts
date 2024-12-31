@@ -1,4 +1,5 @@
 .venv
+.env
 dataset/encoded_dataset
 dataset/encoded_libritts
 dataset/tokenized_libritts*
