@@ -474,6 +474,8 @@ class DualARTransformer(BaseTransformer):
             head_dim=config.fast_head_dim,
             intermediate_size=config.fast_intermediate_size,
             attention_qkv_bias=config.fast_attention_qkv_bias,
+            # TODO REMOVE THIS
+            # dropout=0.2,
         )
 
         self.fast_layers = nn.ModuleList(

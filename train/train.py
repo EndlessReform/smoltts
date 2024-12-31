@@ -1,17 +1,16 @@
 from model.dual_ar import DualARTransformer
 from datasets import load_from_disk, Dataset
 from einops import rearrange
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 import wandb
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from typing import Tuple
 from pydantic import BaseModel
 import os
-from transformers import AutoTokenizer
 
 
 class TrainingConfig(BaseModel):
@@ -28,6 +27,8 @@ class TrainingConfig(BaseModel):
 
     # Optimizer settings
     learning_rate: float = 1e-4
+    lr_start: float = 1e-3
+    lr_warmup_steps: int = 3000
     weight_decay: float = 0.0
     betas: Tuple[float, float] = (0.9, 0.95)
     eps: float = 1e-5
@@ -40,6 +41,7 @@ class TrainingConfig(BaseModel):
     max_sequence_length: int = 512  # Much smaller than original 4096 for LJSpeech
     use_bf16: bool = True
     use_wandb: bool = False
+    use_pretrained: bool = True
 
 
 def load_config(path: str) -> TrainingConfig:
@@ -50,13 +52,20 @@ def load_config(path: str) -> TrainingConfig:
     return TrainingConfig(**config_dict)
 
 
-def load_splits(path="../dataset/tokenized_dataset") -> Tuple[Dataset, Dataset]:
-    # TODO stop hard-coding this once we move off LJSpeech
+def load_splits(
+    path="../dataset/tokenized_libritts",
+) -> Tuple[Dataset, Dataset]:
+    # TODO stop hard-coding this once we experiment with encodings
+    print(f"Loading dataset from {path}")
     dataset = load_from_disk(path)
-    dataset["full"].shuffle(42)
-    split_dataset = dataset["full"].train_test_split(test_size=0.1, seed=42)
-    train_dataset = split_dataset["train"]
-    val_dataset = split_dataset["test"]
+    if "full" in list(dataset.keys()):
+        dataset["full"].shuffle(42)
+        split_dataset = dataset["full"].train_test_split(test_size=0.1, seed=42)
+        train_dataset = split_dataset["train"]
+        val_dataset = split_dataset["test"]
+    else:
+        train_dataset = dataset["train"].shuffle(42)
+        val_dataset = dataset["val"]
     return train_dataset, val_dataset
 
 
@@ -66,6 +75,14 @@ def collate_fn(batch):
     and "labels" shape [9, T].
     We pad them into [B, 9, T_max].
     """
+    # if not hasattr(collate_fn, "printed_debug"):
+    #     print("First batch debug:")
+    #     print(" - tokens shape:", batch[0]["tokens"].shape)
+    #     print(" - labels shape:", batch[0]["labels"].shape)
+    #     print("Sample row=0, first 20 labels:", batch[0]["labels"][0, :20])
+    #     print("Sample row=1, first 20 labels:", batch[0]["labels"][1, :20])
+    #     collate_fn.printed_debug = True
+
     max_input_len = max(item["tokens"].shape[1] for item in batch)
 
     B = len(batch)
@@ -84,11 +101,61 @@ def collate_fn(batch):
     return {"tokens": tokens, "labels": labels}
 
 
+def get_lr_scheduler(optimizer, config: TrainingConfig):
+    """
+    Creates a learning rate scheduler that starts at lr_start and decays
+    linearly to learning_rate over warmup_steps.
+    """
+
+    def lr_lambda(current_step: int):
+        if current_step < config.lr_warmup_steps:
+            # Linear decay from lr_start to learning_rate
+            progress = float(current_step) / float(max(1, config.lr_warmup_steps))
+            return config.lr_start / config.learning_rate * (1.0 - progress) + progress
+        return 1.0  # Return to base learning_rate
+
+    return LambdaLR(optimizer, lr_lambda)
+
+
+def freeze_base_trunk(model: DualARTransformer):
+    """Freeze the base LM trunk while keeping codebook and fast transformer components trainable.
+    Must be called AFTER model initialization but BEFORE optimizer setup."""
+
+    # Freeze base transformer components
+    model.embeddings.requires_grad_(False)
+    for layer in model.layers:
+        for param in layer.parameters():
+            param.requires_grad = False
+    model.norm.requires_grad_(False)
+
+    # Everything else (fast transformer, codebook components) stays trainable by default
+
+    # Verify freezing
+    trainable_modules = []
+    frozen_modules = []
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            trainable_modules.append(name)
+        else:
+            frozen_modules.append(name)
+
+    print("Trainable modules:")
+    for name in trainable_modules:
+        print(f"  {name}")
+    print("\nFrozen modules:")
+    for name in frozen_modules:
+        print(f"  {name}")
+
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"\nTrainable parameters: {trainable_params:,} / {total_params:,}")
+
+
 def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.device):
     # Init wandb
     if config.use_wandb:
         wandb.init(project=config.project_name)
-        wandb.config.update(config.dict())
+        wandb.config.update(config.model_dump())
 
     # Setup dataloaders
     train_loader = DataLoader(
@@ -121,10 +188,6 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
         [
             {"params": weight_decay_params, "weight_decay": config.weight_decay},
             {"params": no_decay_params, "weight_decay": 0.0},
-            {
-                "params": [p for n, p in model.named_parameters() if "fast_" in n],
-                "lr": config.learning_rate * 5.0,
-            },  # Just the fast_ params
         ],
         lr=config.learning_rate,
         betas=config.betas,
@@ -135,14 +198,16 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
     global_step = 0
     os.makedirs(config.checkpoint_path, exist_ok=True)
 
-    tokenizer = AutoTokenizer.from_pretrained("../checkpoints/smoltts")
+    # tokenizer = AutoTokenizer.from_pretrained("../checkpoints/smoltts")
+    # Setup LR scheduler
+    scheduler = get_lr_scheduler(optimizer, config)
 
     for epoch in range(config.max_epochs):
         model.train()
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
 
         for batch in progress_bar:
-            np.save("tokens_batch_1.npy", batch["tokens"].numpy())
+            # np.save("tokens_batch_1.npy", batch["tokens"].numpy())
             # Move batch to device
             # print(tokenizer.decode(batch["tokens"][0, 0, :].to("cpu").flatten()))
             # label_tokens_ex = batch["labels"][0, 0, :].to("cpu").flatten()
@@ -214,6 +279,7 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
             if config.gradient_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip)
             optimizer.step()
+            scheduler.step()
 
             # Logging
             if config.use_wandb:
@@ -222,12 +288,16 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
                         "train/loss": loss.item(),
                         "train/base_loss": base_loss.item(),
                         "train/semantic_loss": semantic_loss.item(),
+                        "train/learning_rate": scheduler.get_last_lr()[
+                            0
+                        ],  # Log the current LR
                         "epoch": epoch,
                     }
                 )
 
             progress_bar.set_postfix(
-                loss=f"lm={base_loss.item():.4f},codes={semantic_loss.item():.4f}"
+                loss=f"lm={base_loss.item():.4f},codes={semantic_loss.item():.4f}",
+                lr=f"{scheduler.get_last_lr()[0]:.2e}",
             )
 
             # Validation
@@ -249,12 +319,26 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
                         "global_step": global_step,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
-                        "config": config.dict(),
+                        "scheduler_state_dict": scheduler.state_dict(),  # Add this line
+                        "config": config.model_dump(),
                     },
                     f"{config.checkpoint_path}/step_{global_step}.pt",
                 )
 
             global_step += 1
+
+    print("FINAL SAVE")
+    torch.save(
+        {
+            "epoch": epoch,
+            "global_step": global_step,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),  # Add this line
+            "config": config.model_dump(),
+        },
+        f"{config.checkpoint_path}/step_{global_step}.pt",
+    )
 
 
 def validate(model, val_loader, device):
@@ -301,15 +385,16 @@ def validate(model, val_loader, device):
 
 
 def main():
-    config = load_config("../config/ljspeech.json")
+    config = load_config("../config/librispeech.json")
     print("Loading datasets")
     train_ds, val_ds = load_splits()
 
     # Load pretrained model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = DualARTransformer.from_pretrained(
-        "../checkpoints/smoltts", load_weights=True
+        "../checkpoints/smoltts_init", load_weights=config.use_pretrained
     )
+    # freeze_base_trunk(model)
     model = model.to(device)
     model = model.to(torch.bfloat16)
 
