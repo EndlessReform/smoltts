@@ -2,7 +2,7 @@
     "project_name": "smoltts_160m_librispeech",
     "checkpoint_path": "../checkpoints",
     "model_path": "pretrained_model",
-    "batch_size": 2,
+    "batch_size": 24,
     "max_epochs": 10,
     "num_workers": 4,
     "gradient_clip": 1.0,
