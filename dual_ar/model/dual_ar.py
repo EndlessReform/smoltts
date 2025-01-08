@@ -294,9 +294,15 @@ class BaseTransformer(nn.Module):
         # Not that the causal mask here follows the definition of scaled_dot_product_attention
         # That is, FALSE means masked out
         # To maintain consistency, key_padding_mask use TRUE to mask out
+        print(
+            f"X shape: {x.shape}, padding: {key_padding_mask.shape if key_padding_mask is not None else 'NA'}"
+        )
+        print(key_padding_mask)
+
         mask = None
         if key_padding_mask is not None:
             mask = self.causal_mask[None, None, :seq_len, :seq_len]  # (B, N, Q, K)
+            print(mask)
             mask = mask & key_padding_mask[:, None, None, :].logical_not()
 
         for layer in self.layers:
@@ -398,6 +404,7 @@ class BaseTransformer(nn.Module):
     def from_pretrained(
         path: str,
         load_weights: bool = False,
+        weight_override=None,
         max_length: Optional[int] = None,
         rope_base: Optional[int] = None,
     ) -> "BaseTransformer":
@@ -414,7 +421,7 @@ class BaseTransformer(nn.Module):
 
         tokenizer = AutoTokenizer.from_pretrained(str(path))
 
-        # TODO: loggign
+        # TODO: logging
         print(f"Loading model from {path}, config: {config}")
         model = model_cls(config, tokenizer=tokenizer)
 
@@ -692,6 +699,12 @@ class Attention(nn.Module):
         k = k.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
         v = v.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
 
+        for n, rails in enumerate(mask.cpu().tolist()):
+            print(f"SEQUENCE {n}")
+            for rail in rails[0]:
+                l = "".join(["T" if l else "F" for l in rail])
+                print(f"{l}\n")
+        raise ValueError("Fuckyoufixmask")
         if self.use_sdpa:
             if mask is None:
                 with sdpa_kernel(SDPBackend.FLASH_ATTENTION):

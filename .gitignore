@@ -1,4 +1,5 @@
 .venv
+.env
 dataset/encoded_dataset
 dataset/encoded_libritts
 dataset/tokenized_libritts*
@@ -10,3 +11,4 @@ wandb
 *.wav
 *.npy
 !checkpoints/smoltts_init/config.json
+.safetensors

@@ -1,16 +1,17 @@
-from model.dual_ar import DualARTransformer
+import argparse
 from datasets import load_from_disk, Dataset
+from dual_ar.model.dual_ar import DualARTransformer
 from einops import rearrange
+import os
+from pydantic import BaseModel
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
-import wandb
-from tqdm import tqdm
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from typing import Tuple
-from pydantic import BaseModel
-import os
+import wandb
 
 
 class TrainingConfig(BaseModel):
@@ -93,24 +94,29 @@ def collate_fn(batch):
         (B, 9, max_input_len), -100, dtype=torch.long
     )  # default is ignore_index
 
+    pad_mask = torch.ones(B, max_input_len)
+
     for i, item in enumerate(batch):
         seq_len = item["tokens"].shape[1]
         tokens[i, :, :seq_len] = item["tokens"]
         labels[i, :, :seq_len] = item["labels"][:, :seq_len]
+        pad_mask[i, :seq_len] = False
 
-    return {"tokens": tokens, "labels": labels}
+    return {"tokens": tokens, "labels": labels, "pad_mask": pad_mask}
 
 
-def get_lr_scheduler(optimizer, config: TrainingConfig):
+def get_lr_scheduler(optimizer, config: TrainingConfig, warmup_start_step: int = 0):
     """
     Creates a learning rate scheduler that starts at lr_start and decays
-    linearly to learning_rate over warmup_steps.
+    linearly to learning_rate over warmup_steps. If warmup_start_step is provided,
+    starts warmup from that step.
     """
 
     def lr_lambda(current_step: int):
-        if current_step < config.lr_warmup_steps:
+        relative_step = current_step - warmup_start_step
+        if relative_step < config.lr_warmup_steps:
             # Linear decay from lr_start to learning_rate
-            progress = float(current_step) / float(max(1, config.lr_warmup_steps))
+            progress = float(relative_step) / float(max(1, config.lr_warmup_steps))
             return config.lr_start / config.learning_rate * (1.0 - progress) + progress
         return 1.0  # Return to base learning_rate
 
@@ -151,10 +157,20 @@ def freeze_base_trunk(model: DualARTransformer):
     print(f"\nTrainable parameters: {trainable_params:,} / {total_params:,}")
 
 
-def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.device):
+def train_loop(
+    model,
+    train_ds,
+    val_ds,
+    config: TrainingConfig,
+    device: torch.device,
+    optimizer: torch.optim.Optimizer,  # New parameter
+    scheduler: torch.optim.lr_scheduler.LRScheduler,  # New parameter
+    start_epoch: int = 0,
+    global_step: int = 0,
+):
     # Init wandb
     if config.use_wandb:
-        wandb.init(project=config.project_name)
+        wandb.init(project=config.project_name, resume="allow")
         wandb.config.update(config.model_dump())
 
     # Setup dataloaders
@@ -176,71 +192,17 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
         pin_memory=True,
     )
 
-    # Setup optimizer
-    weight_decay_params, no_decay_params = [], []
-    for name, param in model.named_parameters():
-        if ".bias" in name or "norm.weight" in name or ".embeddings." in name:
-            no_decay_params.append(param)
-        else:
-            weight_decay_params.append(param)
-
-    optimizer = AdamW(
-        [
-            {"params": weight_decay_params, "weight_decay": config.weight_decay},
-            {"params": no_decay_params, "weight_decay": 0.0},
-        ],
-        lr=config.learning_rate,
-        betas=config.betas,
-        eps=config.eps,
-    )
-
-    # Training loop
-    global_step = 0
-    os.makedirs(config.checkpoint_path, exist_ok=True)
-
-    # tokenizer = AutoTokenizer.from_pretrained("../checkpoints/smoltts")
-    # Setup LR scheduler
-    scheduler = get_lr_scheduler(optimizer, config)
-
-    for epoch in range(config.max_epochs):
+    for epoch in range(start_epoch, config.max_epochs):
         model.train()
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
 
         for batch in progress_bar:
-            # np.save("tokens_batch_1.npy", batch["tokens"].numpy())
-            # Move batch to device
-            # print(tokenizer.decode(batch["tokens"][0, 0, :].to("cpu").flatten()))
-            # label_tokens_ex = batch["labels"][0, 0, :].to("cpu").flatten()
-            # print(
-            #     tokenizer.decode(
-            #         torch.where(label_tokens_ex == -100, 6, label_tokens_ex)
-            #     )
-            # )
-
             tokens = batch["tokens"].to(device)
             labels = batch["labels"].to(device)
-            # Create trivial input tokens
-            # trivial_tokens = torch.zeros((32, 9, 174), dtype=torch.long)
-            # trivial_tokens[:, 0, :] = 50_000  # Top row all 50,000
-            # trivial_tokens[:, 1:, :] = 1  # Bottom n_codebook rows all 1
-
-            # # Create trivial target labels (as before, but noting the seqlen difference)
-            # trivial_labels = torch.zeros((32, 9, 174), dtype=torch.long)
-            # trivial_labels[:, 0, :] = 50_000  # Top row all 50,000
-            # trivial_labels[:, 1:, :] = 1  # Bottom n_codebook rows all 1
-
-            # tokens = trivial_tokens.to(device)
-            # labels = trivial_labels.to(device)
+            pad_mask = batch["pad_mask"].to(device)
 
             # Forward pass
-            outputs = model(tokens)
-
-            # Check if token inputs are sane
-            # print(f"Labels shape in: {labels.shape}")
-            # np.save("labels_batch_1.npy", labels.cpu().numpy())
-            # print(
-            #     f"Output shape for tokens: {outputs.token_logits.shape}, codebooks: {outputs.codebook_logits.shape}"
-            # )
+            outputs = model(inp=tokens, key_padding_mask=pad_mask)
 
             # Loss calculation
             base_loss = F.cross_entropy(
@@ -259,18 +221,6 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
             semantic_loss = F.cross_entropy(
                 codebook_logits, codebook_labels, ignore_index=-100
             )
-            # print("Mask stats:", (labels[:, 1:, :] != -100).float().mean().item())
-            # print("Semantic logit stats:")
-            # logits_flat = rearrange(outputs.codebook_logits, "b s c d -> (b s c) d")
-            # print(" - Mean:", logits_flat.mean().item())
-            # print(" - Std:", logits_flat.std().item())
-            # print(" - % zeros:", (logits_flat == 0).float().mean().item())
-
-            # print(
-            #     "Softmaxed probs for class 1:",
-            #     torch.softmax(codebook_logits, dim=-1)[:, 1].mean().item(),
-            # )
-
             loss = base_loss + semantic_loss
 
             # Backward pass
@@ -292,7 +242,8 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
                             0
                         ],  # Log the current LR
                         "epoch": epoch,
-                    }
+                    },
+                    step=global_step,
                 )
 
             progress_bar.set_postfix(
@@ -309,15 +260,21 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
                         "val/base_loss": val_metrics["base_loss"],
                         "val/semantic_loss": val_metrics["semantic_loss"],
                     },
+                    step=global_step,
                 )
 
             # Save checkpoint
             if global_step % config.save_every_n_steps == 0:
+                state_dict = {
+                    k.replace("_orig_mod.", ""): v
+                    for k, v in model.state_dict().items()
+                }
+
                 torch.save(
                     {
                         "epoch": epoch,
                         "global_step": global_step,
-                        "model_state_dict": model.state_dict(),
+                        "model_state_dict": state_dict,
                         "optimizer_state_dict": optimizer.state_dict(),
                         "scheduler_state_dict": scheduler.state_dict(),  # Add this line
                         "config": config.model_dump(),
@@ -328,11 +285,12 @@ def train_loop(model, train_ds, val_ds, config: TrainingConfig, device: torch.de
             global_step += 1
 
     print("FINAL SAVE")
+    state_dict = {k.replace("_orig_mod.", ""): v for k, v in model.state_dict().items()}
     torch.save(
         {
             "epoch": epoch,
             "global_step": global_step,
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": state_dict,
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),  # Add this line
             "config": config.model_dump(),
@@ -385,24 +343,141 @@ def validate(model, val_loader, device):
 
 
 def main():
-    config = load_config("../config/librispeech.json")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        help="Path to checkpoint file to resume from",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to config file to resume from",
+    )
+    args = parser.parse_args()
+
+    config = load_config(
+        args.config if args.config is not None else "../config/librispeech.json"
+    )
     print("Loading datasets")
     train_ds, val_ds = load_splits()
 
-    # Load pretrained model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = DualARTransformer.from_pretrained(
-        "../checkpoints/smoltts_init", load_weights=config.use_pretrained
-    )
-    # freeze_base_trunk(model)
+
+    # Initialize model, optimizer, scheduler and training state
+    if args.checkpoint:
+        print(f"Loading checkpoint from {args.checkpoint}")
+        checkpoint = torch.load(args.checkpoint, map_location=device)
+        checkpoint_config = TrainingConfig(**checkpoint["config"])
+
+        # Check for config mismatches that would affect optimizer/scheduler
+        optimizer_keys = ["learning_rate", "weight_decay", "betas", "eps"]
+        scheduler_keys = ["lr_start", "lr_warmup_steps"]
+
+        optimizer_changed = any(
+            getattr(config, key) != getattr(checkpoint_config, key)
+            for key in optimizer_keys
+        )
+        scheduler_changed = any(
+            getattr(config, key) != getattr(checkpoint_config, key)
+            for key in scheduler_keys
+        )
+
+        if optimizer_changed or scheduler_changed:
+            print("Detected changes in optimization parameters:")
+            if optimizer_changed:
+                print("Optimizer changes:")
+                for key in optimizer_keys:
+                    old_val = getattr(checkpoint_config, key)
+                    new_val = getattr(config, key)
+                    if old_val != new_val:
+                        print(f"  {key}: {old_val} -> {new_val}")
+            if scheduler_changed:
+                print("Scheduler changes:")
+                for key in scheduler_keys:
+                    old_val = getattr(checkpoint_config, key)
+                    new_val = getattr(config, key)
+                    if old_val != new_val:
+                        print(f"  {key}: {old_val} -> {new_val}")
+            print("Will reinitialize optimizer and scheduler with new settings")
+
+        # Load model with original architecture/tokenizer but override weights
+        model = DualARTransformer.from_pretrained(
+            "../checkpoints/smoltts_init",
+            load_weights=False,  # Don't load original weights since we'll override
+        )
+        model_state_dict = {
+            k.replace("_orig_mod.", ""): v
+            for k, v in checkpoint["model_state_dict"].items()
+        }
+        model.load_state_dict(model_state_dict)
+        start_epoch = checkpoint["epoch"]
+        global_step = checkpoint["global_step"]
+
+    else:
+        # Original initialization path
+        model = DualARTransformer.from_pretrained(
+            "../checkpoints/smoltts_init", load_weights=config.use_pretrained
+        )
+        num_params = sum(p.numel() for p in model.parameters())
+        print(f"Total number of parameters: {num_params}")
+        start_epoch = 0
+        global_step = 0
+
+    # Common model setup
     model = model.to(device)
     model = model.to(torch.bfloat16)
 
+    # Optimizer setup (common to both paths)
+    # Optimizer setup (common to both paths)
+    weight_decay_params, no_decay_params = [], []
+    for name, param in sorted(
+        model.named_parameters()
+    ):  # Sort to ensure consistent ordering
+        if param.requires_grad:  # Only include trainable params
+            if ".bias" in name or "norm.weight" in name or ".embeddings." in name:
+                no_decay_params.append(param)
+            else:
+                weight_decay_params.append(param)
+
+    print(f"Weight decay params: {len(weight_decay_params)}")
+    print(f"No decay params: {len(no_decay_params)}")
+
+    optimizer = AdamW(
+        [
+            {"params": weight_decay_params, "weight_decay": config.weight_decay},
+            {"params": no_decay_params, "weight_decay": 0.0},
+        ],
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+    )
+
+    warmup_start = global_step if args.checkpoint else 0
+    scheduler = get_lr_scheduler(optimizer, config, warmup_start)
+    if args.checkpoint:
+        # Initialize scheduler with current step
+        scheduler.last_epoch = (
+            global_step - 1
+        )  # -1 because scheduler will step once on first call
+
+    # Final common setup
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
-    model = torch.compile(model)
+    print(f"Dropout: {model.layers[0].attention.dropout}")
+    # model = torch.compile(model)
 
     # Start training
-    train_loop(model, train_ds, val_ds, config, device)
+    train_loop(
+        model,
+        train_ds,
+        val_ds,
+        config,
+        device,
+        optimizer,
+        scheduler,
+        start_epoch,
+        global_step,
+    )
 
 
 if __name__ == "__main__":
