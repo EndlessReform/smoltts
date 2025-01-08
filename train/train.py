@@ -54,7 +54,7 @@ def load_config(path: str) -> TrainingConfig:
 
 
 def load_splits(
-    path="../dataset/tokenized_libritts_packed",
+    path="../dataset/tokenized_libritts",
 ) -> Tuple[Dataset, Dataset]:
     # TODO stop hard-coding this once we experiment with encodings
     print(f"Loading dataset from {path}")
@@ -94,24 +94,29 @@ def collate_fn(batch):
         (B, 9, max_input_len), -100, dtype=torch.long
     )  # default is ignore_index
 
+    pad_mask = torch.ones(B, max_input_len)
+
     for i, item in enumerate(batch):
         seq_len = item["tokens"].shape[1]
         tokens[i, :, :seq_len] = item["tokens"]
         labels[i, :, :seq_len] = item["labels"][:, :seq_len]
+        pad_mask[i, :seq_len] = False
 
-    return {"tokens": tokens, "labels": labels}
+    return {"tokens": tokens, "labels": labels, "pad_mask": pad_mask}
 
 
-def get_lr_scheduler(optimizer, config: TrainingConfig):
+def get_lr_scheduler(optimizer, config: TrainingConfig, warmup_start_step: int = 0):
     """
     Creates a learning rate scheduler that starts at lr_start and decays
-    linearly to learning_rate over warmup_steps.
+    linearly to learning_rate over warmup_steps. If warmup_start_step is provided,
+    starts warmup from that step.
     """
 
     def lr_lambda(current_step: int):
-        if current_step < config.lr_warmup_steps:
+        relative_step = current_step - warmup_start_step
+        if relative_step < config.lr_warmup_steps:
             # Linear decay from lr_start to learning_rate
-            progress = float(current_step) / float(max(1, config.lr_warmup_steps))
+            progress = float(relative_step) / float(max(1, config.lr_warmup_steps))
             return config.lr_start / config.learning_rate * (1.0 - progress) + progress
         return 1.0  # Return to base learning_rate
 
@@ -194,9 +199,10 @@ def train_loop(
         for batch in progress_bar:
             tokens = batch["tokens"].to(device)
             labels = batch["labels"].to(device)
+            pad_mask = batch["pad_mask"].to(device)
 
             # Forward pass
-            outputs = model(tokens)
+            outputs = model(inp=tokens, key_padding_mask=pad_mask)
 
             # Loss calculation
             base_loss = F.cross_entropy(
@@ -339,11 +345,20 @@ def validate(model, val_loader, device):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkpoint", type=str, help="Path to checkpoint file to resume from"
+        "--checkpoint",
+        type=str,
+        help="Path to checkpoint file to resume from",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to config file to resume from",
     )
     args = parser.parse_args()
 
-    config = load_config("../config/librispeech.json")
+    config = load_config(
+        args.config if args.config is not None else "../config/librispeech.json"
+    )
     print("Loading datasets")
     train_ds, val_ds = load_splits()
 
@@ -404,6 +419,8 @@ def main():
         model = DualARTransformer.from_pretrained(
             "../checkpoints/smoltts_init", load_weights=config.use_pretrained
         )
+        num_params = sum(p.numel() for p in model.parameters())
+        print(f"Total number of parameters: {num_params}")
         start_epoch = 0
         global_step = 0
 
@@ -436,7 +453,8 @@ def main():
         eps=config.eps,
     )
 
-    scheduler = get_lr_scheduler(optimizer, config)
+    warmup_start = global_step if args.checkpoint else 0
+    scheduler = get_lr_scheduler(optimizer, config, warmup_start)
     if args.checkpoint:
         # Initialize scheduler with current step
         scheduler.last_epoch = (
@@ -445,7 +463,8 @@ def main():
 
     # Final common setup
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
-    model = torch.compile(model)
+    print(f"Dropout: {model.layers[0].attention.dropout}")
+    # model = torch.compile(model)
 
     # Start training
     train_loop(

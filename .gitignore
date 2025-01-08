@@ -11,3 +11,4 @@ wandb
 *.wav
 *.npy
 !checkpoints/smoltts_init/config.json
+.safetensors
