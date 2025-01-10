@@ -54,7 +54,7 @@ def load_config(path: str) -> TrainingConfig:
 
 
 def load_splits(
-    path="../dataset/tokenized_libritts",
+    path="../dataset/tokenized_libritts_bytes_kokoro",
 ) -> Tuple[Dataset, Dataset]:
     # TODO stop hard-coding this once we experiment with encodings
     print(f"Loading dataset from {path}")
@@ -417,7 +417,7 @@ def main():
     else:
         # Original initialization path
         model = DualARTransformer.from_pretrained(
-            "../checkpoints/smoltts_init", load_weights=config.use_pretrained
+            "../checkpoints/smoltts_byte", load_weights=config.use_pretrained
         )
         num_params = sum(p.numel() for p in model.parameters())
         print(f"Total number of parameters: {num_params}")
