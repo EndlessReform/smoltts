@@ -1,14 +1,17 @@
 .venv
 .env
-dataset/encoded_dataset
-dataset/encoded_libritts
-dataset/tokenized_libritts*
-dataset/tokenized_dataset
-checkpoints
 __pycache__
 *.egg-info
 wandb
 *.wav
 *.npy
 !checkpoints/smoltts_init/config.json
+
+# Artifacts
 .safetensors
+checkpoints
+dataset/encoded_dataset
+dataset/encoded_libritts
+dataset/tokenized_libritts*
+dataset/tokenized_dataset
+inits
