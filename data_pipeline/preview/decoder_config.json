@@ -1,0 +1,6 @@
+{
+    "dataset_path": "../../datasets/encoded_ljspeech",
+    "sample_rate": 24000,
+    "batch_size": 5,
+    "split": "full"
+}
