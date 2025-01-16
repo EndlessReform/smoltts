@@ -47,6 +47,8 @@ dataset = load_from_disk(
     dataset_path=str(CONFIG.dataset_path / CONFIG.split),
     keep_in_memory=False,
 ).shuffle()
+if "sentences" in dataset.column_names:
+    dataset = dataset.rename_column("sentences", "text_normalized")
 dataset_iter = iter(dataset)
 mimi_model = MimiCodec()
 
