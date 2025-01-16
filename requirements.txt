@@ -6,6 +6,7 @@ librosa
 python-dotenv
 transformers
 torch
+torchaudio
 safetensors
 setuptools
 soundfile

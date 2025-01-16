@@ -294,15 +294,9 @@ class BaseTransformer(nn.Module):
         # Not that the causal mask here follows the definition of scaled_dot_product_attention
         # That is, FALSE means masked out
         # To maintain consistency, key_padding_mask use TRUE to mask out
-        print(
-            f"X shape: {x.shape}, padding: {key_padding_mask.shape if key_padding_mask is not None else 'NA'}"
-        )
-        print(key_padding_mask)
-
         mask = None
         if key_padding_mask is not None:
             mask = self.causal_mask[None, None, :seq_len, :seq_len]  # (B, N, Q, K)
-            print(mask)
             mask = mask & key_padding_mask[:, None, None, :].logical_not()
 
         for layer in self.layers:
@@ -481,8 +475,6 @@ class DualARTransformer(BaseTransformer):
             head_dim=config.fast_head_dim,
             intermediate_size=config.fast_intermediate_size,
             attention_qkv_bias=config.fast_attention_qkv_bias,
-            # TODO REMOVE THIS
-            # dropout=0.2,
         )
 
         self.fast_layers = nn.ModuleList(
@@ -699,12 +691,6 @@ class Attention(nn.Module):
         k = k.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
         v = v.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
 
-        for n, rails in enumerate(mask.cpu().tolist()):
-            print(f"SEQUENCE {n}")
-            for rail in rails[0]:
-                l = "".join(["T" if l else "F" for l in rail])
-                print(f"{l}\n")
-        raise ValueError("Fuckyoufixmask")
         if self.use_sdpa:
             if mask is None:
                 with sdpa_kernel(SDPBackend.FLASH_ATTENTION):

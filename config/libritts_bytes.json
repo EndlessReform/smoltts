@@ -1,7 +1,8 @@
 {
     "project_name": "smoltts_160m_librispeech",
     "checkpoint_path": "../checkpoints",
-    "init_folder": "../inits/smoltts_init",
+    "init_folder": "../inits/smoltts_byte",
+    "dataset_path": "../dataset/tokenized_libritts_bytes",
     "model_path": "pretrained_model",
     "batch_size": 20,
     "max_epochs": 6,

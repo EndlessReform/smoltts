@@ -1,4 +1,6 @@
-# DualAR Transformer Laboratory
+# SmolTTS: a DualAR transformer laboratory
+
+<img src="docs/dualar.png" alt="DualAR transformer" width="768"/>
 
 This repo is a personal laboratory for training fully autoregressive text-audio multimodal models with the DualAR Transformer architecture. This architecture is most popularly used as the neural codec seq2seq backbone for:
 

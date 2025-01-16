@@ -16,4 +16,8 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["dual_ar"]
+packages = ["dual_ar", "train"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
