@@ -8,10 +8,10 @@ wandb
 !checkpoints/smoltts_init/config.json
 
 # Artifacts
-.safetensors
+*.safetensors
 checkpoints
 dataset/encoded_dataset
 dataset/encoded_libritts
 dataset/tokenized_libritts*
-dataset/tokenized_dataset
+dataset/tokenized_*
 inits

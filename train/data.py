@@ -3,17 +3,18 @@ from typing import Tuple
 import torch
 
 
-def load_splits(
-    path: str,
-) -> Tuple[Dataset, Dataset]:
+def load_splits(path: str, max_sequence_len: int = 768) -> Tuple[Dataset, Dataset]:
     """
     Returns (train, val) datasets
     """
     print(f"Loading dataset from {path}")
     dataset = load_from_disk(path)
+    dataset = dataset.with_format("torch")
     if "full" in list(dataset.keys()):
-        dataset["full"].shuffle(42)
-        split_dataset = dataset["full"].train_test_split(test_size=0.1, seed=42)
+        dataset = dataset["full"].shuffle()
+        split_dataset = dataset.filter(
+            lambda row: row["labels"].size(-1) <= max_sequence_len, num_proc=12
+        ).train_test_split(test_size=5000, seed=42)
         train_dataset = split_dataset["train"]
         val_dataset = split_dataset["test"]
     else:

@@ -14,62 +14,31 @@ def get_target_length(arr: torch.Tensor) -> int:
 
 
 def batch_wav_encoder(batch_dict):
-    # Each batch_dict has "audio" with a list of samples
     batch = batch_dict["audio"]
+    target_lengths = [get_target_length(sample["array"]) for sample in batch]
 
-    LONG_AUDIO_THRESHOLD = 15 * SAMPLING_RATE  # 15 seconds
-    regular_batch = []
-    long_batch = []
+    # Single batch processing
+    padded_batch = pad_sequence(
+        [sample["array"] for sample in batch], batch_first=True
+    ).unsqueeze(
+        1
+    )  # (batch, 1, time)
 
-    # Split short vs. long
-    for sample in batch:
-        if sample["array"].size(-1) > LONG_AUDIO_THRESHOLD:
-            long_batch.append(sample)
-        else:
-            regular_batch.append(sample)
+    padding_mask = (padded_batch != 0).float()
 
-    all_outputs = []
+    with torch.no_grad():
+        enc_out_cuda = model.encode(
+            padded_batch.to("cuda"), padding_mask=padding_mask.to("cuda")
+        )
+    enc_out = enc_out_cuda.audio_codes[:, 0:8, :].clone().cpu()
+    del enc_out_cuda
+    torch.cuda.empty_cache()
 
-    # Encode "regular" items
-    if regular_batch:
-        target_lengths = [get_target_length(s["array"]) for s in regular_batch]
-        padded_batch = pad_sequence(
-            [s["array"] for s in regular_batch], batch_first=True
-        ).unsqueeze(
-            1
-        )  # (batch, 1, time)
+    # Process outputs
+    chunked = torch.unbind(enc_out, dim=0)
+    outputs = [t[:, :l] for t, l in zip(chunked, target_lengths)]
 
-        with torch.no_grad():
-            enc_out_cuda = model.encode(padded_batch.to("cuda"))
-        enc_out = enc_out_cuda.audio_codes[:, 0:8, :].clone().cpu()
-        del enc_out_cuda
-        torch.cuda.empty_cache()
-
-        chunked = torch.unbind(enc_out, dim=0)
-        outputs = [t[:, :l] for t, l in zip(chunked, target_lengths)]
-        all_outputs.extend(outputs)
-
-    # Encode "long" items in smaller mini-batches
-    if long_batch:
-        LONG_BATCH_SIZE = 4
-        for i in range(0, len(long_batch), LONG_BATCH_SIZE):
-            mini = long_batch[i : i + LONG_BATCH_SIZE]
-            target_lengths = [get_target_length(s["array"]) for s in mini]
-            padded_batch = pad_sequence(
-                [s["array"] for s in mini], batch_first=True
-            ).unsqueeze(1)
-
-            with torch.no_grad():
-                enc_out_cuda = model.encode(padded_batch.to("cuda"))
-            enc_out = enc_out_cuda.audio_codes[:, 0:8, :].clone().cpu()
-            del enc_out_cuda
-            torch.cuda.empty_cache()
-
-            chunked = torch.unbind(enc_out, dim=0)
-            outputs = [t[:, :l] for t, l in zip(chunked, target_lengths)]
-            all_outputs.extend(outputs)
-
-    return {"codes": all_outputs}
+    return {"codes": outputs}
 
 
 def main():
