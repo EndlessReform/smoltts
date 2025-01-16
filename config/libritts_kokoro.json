@@ -2,7 +2,7 @@
     "project_name": "smoltts_160m_librispeech",
     "checkpoint_path": "../checkpoints",
     "init_folder": "../inits/smoltts_byte_kokoro",
-    "dataset_path": "../dataset/tokenized_libritts_bytes_kokoro_speaker",
+    "dataset_path": "../datasets/tokenized_libritts_bytes_kokoro_speaker",
     "model_path": "pretrained_model",
     "batch_size": 22,
     "max_epochs": 8,
