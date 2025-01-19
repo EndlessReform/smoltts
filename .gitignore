@@ -10,8 +10,5 @@ wandb
 # Artifacts
 *.safetensors
 checkpoints
-dataset/encoded_dataset
-dataset/encoded_libritts
-dataset/tokenized_libritts*
-dataset/tokenized_*
+datasets
 inits

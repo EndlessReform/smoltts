@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["dual_ar", "train"]
+packages = ["data_pipeline", "dual_ar", "train"]
 
 [tool.pyright]
 venvPath = "."

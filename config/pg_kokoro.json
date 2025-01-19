@@ -1,15 +1,15 @@
 {
-    "project_name": "smoltts_160m_librispeech",
+    "project_name": "smoltts_kokoro",
     "checkpoint_path": "../checkpoints",
     "init_folder": "../inits/smoltts_byte_kokoro",
-    "dataset_path": "../dataset/tokenized_project_gutenberg_bytes_kokoro_speaker",
+    "dataset_path": "../datasets/tokenized_project_gutenberg_bytes_kokoro_speaker",
     "model_path": "pretrained_model",
     "batch_size": 22,
     "max_epochs": 3,
     "num_workers": 4,
     "gradient_clip": 1.0,
     "learning_rate": 3e-4,
-    "lr_start": 5e-4,
+    "lr_start": 6e-4,
     "lr_warmup_steps": 30000,
     "weight_decay": 0.01,
     "betas": [
@@ -17,7 +17,7 @@
         0.95
     ],
     "eps": 1e-5,
-    "val_every_n_steps": 250,
+    "val_every_n_steps": 500,
     "save_every_n_steps": 5000,
     "max_sequence_length": 768,
     "use_bf16": true,

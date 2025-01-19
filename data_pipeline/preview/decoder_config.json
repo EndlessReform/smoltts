@@ -1,0 +1,6 @@
+{
+    "dataset_path": "../../../Kokoro-82M/project_gutenberg_mimi_kokoro",
+    "sample_rate": 24000,
+    "batch_size": 5,
+    "split": "."
+}

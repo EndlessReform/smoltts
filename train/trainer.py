@@ -88,6 +88,9 @@ def validate(
             total_semantic_loss += semantic_loss.item()
             num_batches += 1
 
+            del tokens, labels, outputs, base_loss, semantic_loss, loss
+            torch.cuda.empty_cache()
+
     return {
         "loss": total_loss / num_batches,
         "base_loss": total_base_loss / num_batches,
@@ -155,9 +158,9 @@ def train(
             if config.use_wandb:
                 wandb.log(
                     {
-                        "train/loss": step_output.loss.item(),
-                        "train/base_loss": step_output.base_loss,
-                        "train/semantic_loss": step_output.semantic_loss,
+                        "train/loss": float(step_output.loss),
+                        "train/base_loss": float(step_output.base_loss),
+                        "train/semantic_loss": float(step_output.semantic_loss),
                         "train/learning_rate": step_output.lr,
                         "epoch": epoch,
                     },
@@ -174,9 +177,9 @@ def train(
                 val_metrics = validate(model, val_loader, device)
                 wandb.log(
                     {
-                        "val/loss": val_metrics["loss"],
-                        "val/base_loss": val_metrics["base_loss"],
-                        "val/semantic_loss": val_metrics["semantic_loss"],
+                        "val/loss": float(val_metrics["loss"]),
+                        "val/base_loss": float(val_metrics["base_loss"]),
+                        "val/semantic_loss": float(val_metrics["semantic_loss"]),
                     },
                     step=global_step,
                 )
