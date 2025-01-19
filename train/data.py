@@ -12,9 +12,7 @@ def load_splits(path: str, max_sequence_len: int = 768) -> Tuple[Dataset, Datase
     dataset = dataset.with_format("torch")
     if "full" in list(dataset.keys()):
         dataset = dataset["full"].shuffle()
-        split_dataset = dataset.filter(
-            lambda row: row["labels"].size(-1) <= max_sequence_len, num_proc=12
-        ).train_test_split(test_size=5000, seed=42)
+        split_dataset = dataset.train_test_split(test_size=10000)
         train_dataset = split_dataset["train"]
         val_dataset = split_dataset["test"]
     else:
