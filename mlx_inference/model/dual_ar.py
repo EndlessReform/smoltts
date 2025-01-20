@@ -102,6 +102,8 @@ class DualARTransformer(nn.Module):
         self.norm = nn.RMSNorm(config.dim, eps=config.norm_eps)
         if not self.config.tie_word_embeddings:
             self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
+        else:
+            self.output = None
 
         if config.fast_dim != config.dim:
             self.fast_project_in = nn.Linear(config.dim, config.fast_dim)
@@ -136,7 +138,7 @@ class DualARTransformer(nn.Module):
         else:
             emb_mask = semantic_tokens == self.token_config.semantic_start_id
 
-        codebook_embeds = codebook_embeds * emb_mask[:, mx.newaxis, mx.newaxis]
+        codebook_embeds = codebook_embeds * emb_mask[:, :, mx.newaxis]
         return mx.concat([semantic_embeds, codebook_embeds], axis=1).sum(axis=1)
 
     # def __call__(self, ):
@@ -149,8 +151,8 @@ class DualARTransformer(nn.Module):
         for layer in self.layers:
             x = layer(x, mask)
 
-        x_last = x[:, -1, :]
-        slow_out = self.norm(x_last)
+        x = x[:, -1, :]
+        slow_out = self.norm(x)
         if self.output is not None:
             token_logits = self.output(slow_out)
         else:
@@ -177,6 +179,8 @@ class TransformerBlock(nn.Module):
 
     def __call__(self, x: mx.array, mask: Optional[mx.array]) -> mx.array:
         h = x + self.attention(self.attention_norm(x), mask)
+        # mx.save("zeroes_attn_1_mlx.npy", h.astype(mx.float32))
+        # raise ValueError("TODO layer 1")
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 
@@ -212,10 +216,12 @@ class Attention(nn.Module):
     def __call__(self, x: mx.array, mask: Optional[mx.array] = None) -> mx.array:
         bsz, seqlen, _ = x.shape
         qkv = self.wqkv(x)
+        # mx.save("zeroes_qkv_mlx.npy", qkv.astype(mx.float32))
 
         # Split qkv back to constituent sections
         kv_size = self.n_local_heads * self.head_dim
-        q, k, v = qkv.split([self.dim, kv_size, kv_size], axis=-1)
+        raw = qkv.split([self.dim, self.dim + kv_size], axis=-1)
+        q, k, v = raw
         q = q.reshape((bsz, seqlen, self.n_head, self.head_dim))
         k = k.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
         v = v.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
