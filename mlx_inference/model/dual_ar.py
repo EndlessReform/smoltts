@@ -2,7 +2,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from pydantic import BaseModel
 from tokenizers import Tokenizer
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, List, Tuple
 
 from mlx_inference.model.config import ModelType
 
@@ -143,15 +143,15 @@ class DualARTransformer(nn.Module):
 
     # def __call__(self, ):
     def forward_generate(
-        self, inputs: mx.array, pad_mask: Optional[mx.array] = None
+        self, inputs: mx.array, cache: Optional[List[Any]] = None
     ) -> Tuple[mx.array, mx.array]:
         x = self.embed(inputs)
-        # TODO handle KV cache
-        mask = create_attention_mask(x)
-        for layer in self.layers:
-            x = layer(x, mask)
+        mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
-        x = x[:, -1, :]
+        for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
+            x = layer(x, mask=mask, cache=layer_cache)
+
+        x = x[:, -1, :]  # Only take the last token for generation
         slow_out = self.norm(x)
         if self.output is not None:
             token_logits = self.output(slow_out)
@@ -161,10 +161,16 @@ class DualARTransformer(nn.Module):
         x = self.fast_project_in(x)
         return (token_logits, x)
 
-    def forward_generate_fast(self, x: mx.array):
-        mask = create_attention_mask(x)
-        for layer in self.fast_layers:
-            x = layer(x, mask)
+    def forward_generate_fast(
+        self, x: mx.array, cache: Optional[List[Any]] = None
+    ) -> mx.array:
+        mx.save(f"zeroes_input_{cache[0].offset}_mlx.npy", x)
+        mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
+        for layer, layer_cache in zip(
+            self.fast_layers, cache or [None] * len(self.fast_layers)
+        ):
+            x = layer(x, mask=mask, cache=layer_cache)
+
         fast_out = self.fast_norm(x)
         return self.fast_output(fast_out)
 
@@ -177,10 +183,10 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = nn.RMSNorm(dims=config.dim, eps=config.norm_eps)
         self.attention_norm = nn.RMSNorm(config.dim, config.norm_eps)
 
-    def __call__(self, x: mx.array, mask: Optional[mx.array]) -> mx.array:
-        h = x + self.attention(self.attention_norm(x), mask)
-        # mx.save("zeroes_attn_1_mlx.npy", h.astype(mx.float32))
-        # raise ValueError("TODO layer 1")
+    def __call__(
+        self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
+    ) -> mx.array:
+        h = x + self.attention(self.attention_norm(x), mask=mask, cache=cache)
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 
@@ -192,7 +198,7 @@ class Attention(nn.Module):
         assert config.dim % config.n_head == 0
 
         self.rope = nn.RoPE(
-            int(config.dim / config.n_head), traditional=False, base=config.rope_base
+            int(config.dim / config.n_head), traditional=True, base=config.rope_base
         )
         total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
         self.wqkv = nn.Linear(
@@ -211,12 +217,11 @@ class Attention(nn.Module):
         # Manually apply $\sqrt{d_k}$
         self.scale = config.head_dim**-0.5
 
-        # TODO KV cache
-
-    def __call__(self, x: mx.array, mask: Optional[mx.array] = None) -> mx.array:
+    def __call__(
+        self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
+    ) -> mx.array:
         bsz, seqlen, _ = x.shape
         qkv = self.wqkv(x)
-        # mx.save("zeroes_qkv_mlx.npy", qkv.astype(mx.float32))
 
         # Split qkv back to constituent sections
         kv_size = self.n_local_heads * self.head_dim
@@ -226,16 +231,17 @@ class Attention(nn.Module):
         k = k.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
         v = v.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
 
-        # TODO handle KV cache for this
-        q = self.rope(q)
-        k = self.rope(k)
-
-        # from https://github.com/ml-explore/mlx-examples/blob/07f88f8057d1743f2a147468ad62c51bece783cd/llms/mlx_lm/models/llama.py#L77
         q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
+        if cache is not None:
+            q = self.rope(q, offset=cache.offset)
+            k = self.rope(k, offset=cache.offset)
+            k, v = cache.update_and_fetch(k, v)
 
-        # TODO handle KV cache here
+        else:
+            q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
+            q = self.rope(q)
+            k = self.rope(k)
 
-        # thank god MLX handles repeat_interleave
         output = mx.fast.scaled_dot_product_attention(
             q=q, k=k, v=v, scale=self.scale, mask=mask
         )
@@ -255,42 +261,19 @@ class MLP(nn.Module):
         return self.w2(nn.silu(self.w1(x)) * self.w3(x))
 
 
-def create_causal_mask(
-    N: int,
-    offset: int = 0,
-    window_size: Optional[int] = None,
-    lengths: Optional[mx.array] = None,
-):
-    """
-    Copied wholesale from https://github.com/ml-explore/mlx-examples/blob/main/llms/mlx_lm/models/base.py#L100
-    """
-    rinds = mx.arange(offset + N)
-    linds = mx.arange(offset, offset + N) if offset else rinds
-    linds = linds[:, None]
-    rinds = rinds[None]
-    mask = linds < rinds
-    if window_size is not None:
-        mask = mask | (linds > rinds + window_size)
-    if lengths is not None:
-        lengths = lengths[:, None, None, None]
-        mask = mask | (rinds >= lengths)
-    return mask * -1e9
-
-
 def create_attention_mask(h: mx.array, cache: Optional[Any] = None):
     T = h.shape[1]
     if T > 1:
-        window_size = None
-        offset = 0
-        if cache is not None and cache[0] is not None:
-            c = cache[0]
-            if hasattr(c, "max_size"):
-                offset = min(c.max_size, c.offset)
-                window_size = c.max_size
-            else:
-                offset = c.offset
-        mask = create_causal_mask(T, offset, window_size=window_size)
+        offset = cache[0].offset if cache is not None and cache[0] is not None else 0
+        mask = _create_causal_mask(T, offset=offset)
         mask = mask.astype(h.dtype)
     else:
         mask = None
+    return mask
+
+
+def _create_causal_mask(N: int, offset: int = 0):
+    """Creates a causal mask for attention."""
+    linds, rinds = mx.arange(offset + N), mx.arange(offset, offset + N)
+    mask = (linds[:, None] < rinds[None]) * -1e9
     return mask
