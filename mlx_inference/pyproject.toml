@@ -8,4 +8,5 @@ dependencies = [
     "mlx>=0.22.0",
     "pydantic>=2.10.5",
     "tokenizers>=0.21.0",
+    "tqdm>=4.67.1",
 ]

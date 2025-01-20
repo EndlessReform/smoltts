@@ -1018,6 +1018,7 @@ dependencies = [
     { name = "mlx" },
     { name = "pydantic" },
     { name = "tokenizers" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -1025,6 +1026,7 @@ requires-dist = [
     { name = "mlx", specifier = ">=0.22.0" },
     { name = "pydantic", specifier = ">=2.10.5" },
     { name = "tokenizers", specifier = ">=0.21.0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
 ]
 
 [[package]]
