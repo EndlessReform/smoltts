@@ -164,7 +164,6 @@ class DualARTransformer(nn.Module):
     def forward_generate_fast(
         self, x: mx.array, cache: Optional[List[Any]] = None
     ) -> mx.array:
-        mx.save(f"zeroes_input_{cache[0].offset}_mlx.npy", x)
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
         for layer, layer_cache in zip(
             self.fast_layers, cache or [None] * len(self.fast_layers)

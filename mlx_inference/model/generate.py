@@ -135,7 +135,6 @@ def generate_blocking(
 
     decode_start_time = time.time()
     for maybe_vq_token in tqdm(token_generator):
-        print(maybe_vq_token.vq_tensor.shape)
         previous_vq_codes.append(maybe_vq_token.vq_tensor)
     decode_end_time = time.time()
     decode_duration = decode_end_time - decode_start_time
@@ -145,7 +144,7 @@ def generate_blocking(
     out_len = len(previous_vq_codes) - 1
     frame_rate = 12.5 if model.model_type.family == "dual_ar" else 21.535
     print(
-        f"{out_len} generated in {decode_duration:2f}s ({out_len / decode_duration:2f} tokens/s, {((decode_duration * 1000) / out_len):.3f}ms/token), RTF: {(out_len / frame_rate) / decode_duration:3f}"
+        f"Generated in {decode_duration:.2f}s ({(out_len / decode_duration):.2f} tokens/s, {((decode_duration * 1000) / out_len):.2f}ms/token), RTF: {(out_len / frame_rate) / decode_duration:.2f}"
     )
     mx.eval(out_tokens)
     return out_tokens
