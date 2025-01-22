@@ -144,7 +144,7 @@ def generate_blocking(
     out_len = len(previous_vq_codes) - 1
     frame_rate = 12.5 if model.model_type.family == "dual_ar" else 21.535
     print(
-        f"Generated in {decode_duration:.2f}s ({(out_len / decode_duration):.2f} tokens/s, {((decode_duration * 1000) / out_len):.2f}ms/token), RTF: {(out_len / frame_rate) / decode_duration:.2f}"
+        f"Generated in {decode_duration:.2f}s ({(out_len / decode_duration):.2f} tokens/s, {((decode_duration * 1000) / out_len):.2f}ms/token), {(out_len / frame_rate) / decode_duration:.2f}x realtime"
     )
     mx.eval(out_tokens)
     return out_tokens

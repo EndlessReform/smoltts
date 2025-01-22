@@ -12,3 +12,4 @@ wandb
 checkpoints
 datasets
 inits
+mlx_trace*

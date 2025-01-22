@@ -34,7 +34,7 @@ class SpeechRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    checkpoint_dir = Path("../inits/smoltts_byte_reference")
+    checkpoint_dir = Path("../inits/smoltts_10_layers")
     model_type = ModelType(family="dual_ar", version=None, codec="mimi")
 
     load_start_time = time.time()
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     model = DualARTransformer(config, token_config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
     model.load_weights(model_path, strict=True)
-    model = model.apply(lambda p: p.astype(mx.float32))
+    # model = model.apply(lambda p: p.astype(mx.float32))
     mx.eval(model.parameters())
     model.eval()
 
@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI):
 
     load_end_time = time.time()
     print(f"Loaded model and config in {load_end_time - load_start_time:.3f} seconds")
+    print(f"Default device: {mx.default_device()}")
 
     yield
     print("shutting down")
@@ -94,10 +95,7 @@ async def handle_speech(item: SpeechRequest):
     end_time = time.time()
     print(f"Took {end_time - start_time:.2f}s to decode")
 
-    start_time = time.time()
     data = pcm_to_wav_bytes(pcm_data)
-    end_time = time.time()
-    print(f"Took {end_time - start_time:.5f}s to add headers")
 
     return Response(
         data,

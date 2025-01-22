@@ -13,9 +13,6 @@ def pcm_to_wav_bytes(pcm_data: np.ndarray, sample_rate: int = 24000) -> bytes:
     """
     # Flatten to 1D array first
     pcm_data = pcm_data.flatten()
-    print(
-        f"Flattened PCM shape: {pcm_data.shape}, samples: {pcm_data[:5]}"
-    )  # Let's verify
 
     header = bytearray()
     # RIFF chunk

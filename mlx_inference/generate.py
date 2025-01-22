@@ -6,7 +6,7 @@ from tokenizers import Tokenizer
 
 from mlx_inference.model.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
 from mlx_inference.model.config import ModelType
-from mlx_inference.model.generate import generate_blocking
+from mlx_inference.model.generate import SingleBatchGenerator
 from mlx_inference.model.utils.prompt import PromptEncoder
 
 parser = argparse.ArgumentParser(
@@ -32,25 +32,29 @@ def main():
     model = DualARTransformer(config, token_config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
     model.load_weights(model_path, strict=True)
-    model = model.apply(lambda p: p.astype(mx.float32))
+    # model = model.apply(lambda p: p.astype(mx.float32))
     mx.eval(model.parameters())
     model.eval()
     load_end_time = time.time()
     print(f"Loaded model and config in {load_end_time - load_start_time:.3f} seconds")
 
     # Initialize cache
-    # prompt = mx.zeros([1, 9, 32], mx.uint32)
-    prompt_encoder = PromptEncoder.from_model(tokenizer, model)
-    sysprompt = prompt_encoder.encode_text_turn("system", f"<|speaker:{args.speaker}|>")
-    user_prompt = prompt_encoder.encode_text_turn("user", args.text)
-    assistant_prefix = prompt_encoder.encode_text_turn("assistant")
-    print([p.shape for p in [sysprompt, user_prompt, assistant_prefix]])
-    prompt = mx.concat([sysprompt, user_prompt, assistant_prefix], axis=1)[
-        mx.newaxis, :, :
-    ]
+    prompt = mx.zeros([1, 9, 32], mx.uint32)
+    trace_file = "mlx_trace.gputrace"
+    mx.metal.start_capture(trace_file)
+    # prompt_encoder = PromptEncoder.from_model(tokenizer, model)
+    # sysprompt = prompt_encoder.encode_text_turn("system", f"<|speaker:{args.speaker}|>")
+    # user_prompt = prompt_encoder.encode_text_turn("user", args.text)
+    # assistant_prefix = prompt_encoder.encode_text_turn("assistant")
+    # print([p.shape for p in [sysprompt, user_prompt, assistant_prefix]])
+    # prompt = mx.concat([sysprompt, user_prompt, assistant_prefix], axis=1)[
+    #     mx.newaxis, :, :
+    # ]
+    generator = SingleBatchGenerator(model, prompt, audio_only=True)
+    next(generator)
+    next(generator)
 
-    gen = generate_blocking(model, prompt, audio_only=True)
-    mx.save("out.npy", gen)
+    mx.metal.stop_capture()
 
 
 if __name__ == "__main__":
