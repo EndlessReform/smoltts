@@ -119,7 +119,8 @@ class SingleBatchGenerator:
 
             # model GETS higher
             code = next_token_tensor.flatten()[0]
-            next_token_tensor += max(0, i * self.model.config.codebook_size)
+            if self.model.model_type.version == "wte":
+                next_token_tensor += max(0, i * self.model.config.codebook_size)
             x = self.model.fast_embeddings(next_token_tensor)
             codes.append(code)
 
