@@ -1,0 +1,13 @@
+{
+    "checkpoint_dir": "../inits/smoltts-wte",
+    "generation": {
+        "default_temp": 0.0,
+        "default_fast_temp": 0.2,
+        "min_p": 0.1
+    },
+    "model_type": {
+        "family": "dual_ar",
+        "version": "wte",
+        "codec": "mimi"
+    }
+}

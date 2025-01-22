@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import Response
 import huggingface_hub
+import json
 import mlx.core as mx
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -11,11 +12,13 @@ import time
 from tokenizers import Tokenizer
 from typing import Literal, Union
 
-from mlx_inference.model.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
-from mlx_inference.model.config import ModelType
-from mlx_inference.model.generate import generate_blocking
-from mlx_inference.model.utils.prompt import PromptEncoder
+from mlx_inference.lm.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
+from mlx_inference.lm.config import ModelType
+from mlx_inference.lm.generate import generate_blocking
+from mlx_inference.lm.utils.prompt import PromptEncoder
 from mlx_inference.io.wav import pcm_to_wav_bytes
+import mlx_inference
+import mlx_inference.settings
 
 
 def get_mimi_path():
@@ -34,8 +37,14 @@ class SpeechRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    checkpoint_dir = Path("../inits/smoltts_10_layers")
-    model_type = ModelType(family="dual_ar", version=None, codec="mimi")
+    # TODO stop hard coding path
+    with open("./settings/default_settings.json") as f:
+        settings_json = json.loads(f.read())
+        settings = mlx_inference.settings.ServerSettings(**settings_json)
+
+    checkpoint_dir = Path(settings.checkpoint_dir)
+    app.state.settings = settings
+    model_type = settings.model_type
 
     load_start_time = time.time()
     print("Loading model configuration and tokenizer...")
@@ -48,7 +57,7 @@ async def lifespan(app: FastAPI):
     print("Loading DualAR model...")
     model = DualARTransformer(config, token_config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
-    model.load_weights(model_path, strict=True)
+    model.load_weights(model_path, strict=False)
     # model = model.apply(lambda p: p.astype(mx.float32))
     mx.eval(model.parameters())
     model.eval()
@@ -84,7 +93,9 @@ async def handle_speech(item: SpeechRequest):
     ]
 
     # Generate semantic tokens
-    gen = generate_blocking(app.state.model, prompt, audio_only=True)
+    gen = generate_blocking(
+        app.state.model, prompt, app.state.settings.generation, audio_only=True
+    )
 
     # Convert to numpy and prepare for Mimi decoding
     tokens = np.array(gen).astype(np.uint32)

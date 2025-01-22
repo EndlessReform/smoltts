@@ -4,10 +4,10 @@ from pathlib import Path
 import time
 from tokenizers import Tokenizer
 
-from mlx_inference.model.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
-from mlx_inference.model.config import ModelType
-from mlx_inference.model.generate import SingleBatchGenerator
-from mlx_inference.model.utils.prompt import PromptEncoder
+from mlx_inference.lm.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
+from mlx_inference.lm.config import ModelType
+from mlx_inference.lm.generate import SingleBatchGenerator
+from mlx_inference.lm.utils.prompt import PromptEncoder
 
 parser = argparse.ArgumentParser(
     description="A simple one-off CLI generator for DualAR models"

@@ -4,12 +4,9 @@ import time
 from tqdm import tqdm
 from typing import Any, Optional, List
 
-from mlx_inference.model.dual_ar import DualARTransformer
-from mlx_inference.model.cache import make_prompt_cache, KVCache
-from mlx_inference.model.utils.constraints import (
-    constrain_logits_to_audio,
-    rescale_semantic_tokens,
-)
+from mlx_inference.lm.dual_ar import DualARTransformer
+from mlx_inference.lm.cache import make_prompt_cache, KVCache
+from mlx_inference.settings import GenerationSettings
 
 
 class VQToken(BaseModel):
@@ -21,7 +18,7 @@ class VQToken(BaseModel):
 class SingleBatchGenerator:
     model: DualARTransformer
     input_pos: int
-    max_new_tokens: int
+    generation_settings: GenerationSettings
     prompt: Optional[mx.array]
     previous_codes: Optional[List[int]]
     audio_only: bool
@@ -31,16 +28,19 @@ class SingleBatchGenerator:
         self,
         model: DualARTransformer,
         prompt: mx.array,
+        generation_settings: GenerationSettings,
         audio_only: bool = True,
-        max_new_tokens: Optional[int] = None,
     ):
         self.model = model
         # TODO handle KV cache
         self.input_pos = 0
         # TODO handle this
         self.max_new_tokens = (
-            max_new_tokens if max_new_tokens is not None else model.config.max_seq_len
+            generation_settings.max_new_tokens
+            if generation_settings.max_new_tokens is not None
+            else model.config.max_seq_len
         )
+        self.generation_settings = generation_settings
         self.audio_only = audio_only
         self.prompt = prompt
         self.previous_codes = None
@@ -79,7 +79,19 @@ class SingleBatchGenerator:
         # )
         slow_logits = logits
         # TODO handle sampling, I just want SOME output
-        token_ids = mx.argmax(slow_logits, axis=-1)
+        if self.generation_settings.default_temp == 0.0:
+            token_ids = mx.argmax(slow_logits, axis=-1)
+        else:
+            slow_logits = slow_logits / self.generation_settings.default_temp
+            # if self.generation_settings.min_p is None:
+            token_ids = mx.random.categorical(slow_logits)
+            # else:
+            #     token_ids = min_p_sampling(
+            #         slow_logits,
+            #         self.generation_settings.min_p,
+            #         self.generation_settings.default_temp,
+            #     )
+
         # slow_token_id = (
         #     rescale_semantic_tokens(
         #         token_ids, self.model.model_type, self.model.token_config
@@ -92,14 +104,24 @@ class SingleBatchGenerator:
         codes = []
         x = hidden_states[mx.newaxis, :, :]
         fast_cache = make_prompt_cache(self.model, is_fast=True)
-        for _ in range(0, self.model.config.num_codebooks):
+        for i in range(0, self.model.config.num_codebooks):
             fast_logits = self.model.forward_generate_fast(x, cache=fast_cache)
             mx.eval(fast_logits)
 
             # TODO handle sampling, esp. if it sounds terrible
-            next_token_tensor = mx.argmax(fast_logits, axis=-1)
+            if (
+                fast_temp := self.generation_settings.default_fast_temp
+            ) is not None and fast_temp > 0:
+                fast_logits = fast_logits / fast_temp
+                next_token_tensor = mx.random.categorical(fast_logits)
+            else:
+                next_token_tensor = mx.argmax(fast_logits, axis=-1)
+
+            # model GETS higher
+            code = next_token_tensor.flatten()[0]
+            next_token_tensor += max(0, i * self.model.config.codebook_size)
             x = self.model.fast_embeddings(next_token_tensor)
-            codes.append(next_token_tensor.flatten()[0])
+            codes.append(code)
 
         codes_tensor = mx.array([slow_token_id, *codes], dtype=mx.uint32)[
             mx.newaxis, :, mx.newaxis
@@ -118,11 +140,16 @@ class SingleBatchGenerator:
 def generate_blocking(
     model: DualARTransformer,
     prompt: mx.array,
+    generation_settings: GenerationSettings,
     audio_only: bool = True,
-    max_new_tokens: Optional[int] = None,
 ) -> mx.array:
     prompt_size = prompt.shape[-1]
-    token_generator = SingleBatchGenerator(model, prompt, audio_only, max_new_tokens)
+    token_generator = SingleBatchGenerator(
+        model,
+        prompt,
+        generation_settings,
+        audio_only,
+    )
     prefill_start_time = time.time()
     first_vq_token = next(token_generator)
     prefill_end_time = time.time()

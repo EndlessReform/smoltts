@@ -3,8 +3,8 @@ import tokenizers
 from tokenizers import Tokenizer
 from typing import Optional
 
-from mlx_inference.model.config import ModelType
-from mlx_inference.model.dual_ar import DualARTransformer
+from mlx_inference.lm.config import ModelType
+from mlx_inference.lm.dual_ar import DualARTransformer
 
 
 class PromptEncoder:

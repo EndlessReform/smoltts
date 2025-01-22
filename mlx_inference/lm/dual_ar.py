@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from tokenizers import Tokenizer
 from typing import Any, Optional, List, Tuple
 
-from mlx_inference.model.config import ModelType
+from mlx_inference.lm.config import ModelType
 
 
 class DualARModelArgs(BaseModel):
@@ -62,7 +62,9 @@ class TokenConfig(BaseModel):
         if model.family == "dual_ar" or (
             model.family == "fish" and model.version == "1.5"
         ):
+            print("starting dualar")
             semantic_start_id = tokenizer.token_to_id("<|semantic:0|>")
+            print(semantic_start_id)
         else:
             semantic_start_id = tokenizer.token_to_id("<|semantic|>") or 5
 
@@ -110,7 +112,12 @@ class DualARTransformer(nn.Module):
         else:
             self.fast_project_in = nn.Identity()
 
-        self.fast_embeddings = nn.Embedding(config.codebook_size, config.fast_dim)
+        if model_type.family == "dual_ar" and model_type.version == "wte":
+            self.fast_embeddings = nn.Embedding(
+                config.codebook_size * (config.num_codebooks - 1), config.fast_dim
+            )
+        else:
+            self.fast_embeddings = nn.Embedding(config.codebook_size, config.fast_dim)
         self.fast_layers = [
             TransformerBlock(config) for _ in range(config.n_fast_layer)
         ]
