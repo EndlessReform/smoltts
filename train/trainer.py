@@ -203,7 +203,6 @@ def train(
 
                 wandb.log(metrics, step=global_step)
 
-            # Update progress bar with more detailed loss info
             progress_bar.set_postfix(
                 loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
                 lr=f"{step_output.lr:.2e}",
