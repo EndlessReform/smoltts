@@ -692,24 +692,24 @@ class Attention(nn.Module):
         v = v.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
 
         if self.use_sdpa:
-            if mask is None:
-                with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
-                    y = F.scaled_dot_product_attention(
-                        q,
-                        k,
-                        v,
-                        dropout_p=self.dropout if self.training else 0.0,
-                        is_causal=True,
-                        # No third party attn_mask here to use flash_attention
-                    )
-            else:
+            # if mask is None:
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
                 y = F.scaled_dot_product_attention(
                     q,
                     k,
                     v,
-                    attn_mask=mask,
                     dropout_p=self.dropout if self.training else 0.0,
+                    is_causal=True,
+                    # No third party attn_mask here to use flash_attention
                 )
+        # else:
+        #     y = F.scaled_dot_product_attention(
+        #         q,
+        #         k,
+        #         v,
+        #         attn_mask=mask,
+        #         dropout_p=self.dropout if self.training else 0.0,
+        #     )
         else:
             y = self.eq_scaled_dot_product_attention(
                 q,
