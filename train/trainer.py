@@ -1,12 +1,14 @@
 from dataclasses import dataclass
+from einops import rearrange
 from functools import partial
-from dual_ar.model.dual_ar import DualARTransformer
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
-from einops import rearrange
 from tqdm import tqdm
+from typing import Optional, List
 import wandb
+
+from dual_ar.model.dual_ar import DualARTransformer
 from train.config import TrainingConfig
 from train.data import collate_fn
 from train.state import TrainingState, CheckpointManager
@@ -20,19 +22,42 @@ class TrainStepOutput:
     lr: float
 
 
-def compute_losses(outputs, labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute base and semantic losses"""
+def compute_losses(
+    outputs, labels: torch.Tensor, per_codebook_loss: bool = False
+) -> tuple[torch.Tensor, torch.Tensor, List[float]]:
+    """Compute base and semantic losses, plus individual codebook losses"""
+    # Base loss computation remains the same
     base_loss = F.cross_entropy(
         outputs.token_logits.view(-1, outputs.token_logits.size(-1)),
         labels[:, 0, :].reshape(-1),
         ignore_index=-100,
     )
 
+    # Compute individual codebook losses
+    n_codebooks = labels.shape[1] - 1  # Subtract 1 for the base tokens
+    if per_codebook_loss:
+        codebook_losses = []
+
+        for i in range(n_codebooks):
+            # Reshape logits and labels for current codebook
+            current_logits = outputs.codebook_logits[:, :, i, :]  # [batch, seq, vocab]
+            current_labels = labels[:, i + 1, :]  # [batch, seq]
+
+            loss = F.cross_entropy(
+                current_logits.reshape(-1, current_logits.size(-1)),
+                current_labels.reshape(-1),
+                ignore_index=-100,
+            )
+            codebook_losses.append(loss.item())
+    else:
+        codebook_losses = []
+
+    # Compute total semantic loss (same as before, just using einops)
     codebook_logits = rearrange(outputs.codebook_logits, "b s n d -> (b s n) d")
     codebook_labels = rearrange(labels[:, 1:, :], "b n s -> (b s n)")
-
     semantic_loss = F.cross_entropy(codebook_logits, codebook_labels, ignore_index=-100)
-    return base_loss, semantic_loss
+
+    return base_loss, semantic_loss, codebook_losses
 
 
 def train_step(
@@ -49,7 +74,7 @@ def train_step(
     pad_mask = batch["pad_mask"].to(device)
 
     outputs = model(inp=tokens, key_padding_mask=pad_mask)
-    base_loss, semantic_loss = compute_losses(outputs, labels)
+    base_loss, semantic_loss, _ = compute_losses(outputs, labels)
     loss = base_loss + semantic_loss
 
     optimizer.zero_grad()
@@ -73,6 +98,7 @@ def validate(
     """Run validation"""
     model.eval()
     total_loss = total_base_loss = total_semantic_loss = num_batches = 0
+    total_codebook_losses = None
 
     with torch.no_grad():
         for batch in val_loader:
@@ -80,12 +106,21 @@ def validate(
             labels = batch["labels"].to(device)
 
             outputs = model(tokens)
-            base_loss, semantic_loss = compute_losses(outputs, labels)
+            base_loss, semantic_loss, codebook_losses = compute_losses(outputs, labels)
             loss = base_loss + semantic_loss
 
+            # Initialize total_codebook_losses on first batch
+            if total_codebook_losses is None:
+                total_codebook_losses = [0.0] * len(codebook_losses)
+
+            # Accumulate losses
             total_loss += loss.item()
             total_base_loss += base_loss.item()
             total_semantic_loss += semantic_loss.item()
+            total_codebook_losses = [
+                total + current
+                for total, current in zip(total_codebook_losses, codebook_losses)
+            ]
             num_batches += 1
 
             del tokens, labels, outputs, base_loss, semantic_loss, loss
@@ -95,6 +130,7 @@ def validate(
         "loss": total_loss / num_batches,
         "base_loss": total_base_loss / num_batches,
         "semantic_loss": total_semantic_loss / num_batches,
+        "codebook_losses": [loss / num_batches for loss in total_codebook_losses],
     }
 
 
@@ -156,16 +192,16 @@ def train(
             )
 
             if config.use_wandb:
-                wandb.log(
-                    {
-                        "train/loss": float(step_output.loss),
-                        "train/base_loss": float(step_output.base_loss),
-                        "train/semantic_loss": float(step_output.semantic_loss),
-                        "train/learning_rate": step_output.lr,
-                        "epoch": epoch,
-                    },
-                    step=global_step,
-                )
+                # Log overall metrics
+                metrics = {
+                    "train/loss": float(step_output.loss),
+                    "train/base_loss": float(step_output.base_loss),
+                    "train/semantic_loss": float(step_output.semantic_loss),
+                    "train/learning_rate": step_output.lr,
+                    "epoch": epoch,
+                }
+
+                wandb.log(metrics, step=global_step)
 
             progress_bar.set_postfix(
                 loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
@@ -180,11 +216,14 @@ def train(
                         "val/loss": float(val_metrics["loss"]),
                         "val/base_loss": float(val_metrics["base_loss"]),
                         "val/semantic_loss": float(val_metrics["semantic_loss"]),
+                        **{
+                            f"val/codebook_{i+1}_loss": loss
+                            for i, loss in enumerate(val_metrics["codebook_losses"])
+                        },
                     },
                     step=global_step,
                 )
 
-            # Save checkpoint
             if global_step % config.save_every_n_steps == 0:
                 checkpoint_manager.save(
                     TrainingState(
@@ -199,7 +238,6 @@ def train(
 
             global_step += 1
 
-    # Final save
     print("FINAL SAVE")
     checkpoint_manager.save(
         TrainingState(
