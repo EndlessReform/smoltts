@@ -2,7 +2,7 @@ import dataclasses
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Literal, Union
 
 import torch
 import torch.nn as nn
@@ -44,7 +44,7 @@ class BaseModelArgs:
     num_codebooks: int = 4
 
     # Gradient checkpointing
-    use_gradient_checkpointing: bool = True
+    use_gradient_checkpointing: bool = False
 
     # Initialize the model
     initializer_range: float = 0.02
@@ -92,6 +92,7 @@ class DualARModelArgs(BaseModelArgs):
     fast_head_dim: Optional[int] = None
     fast_intermediate_size: Optional[int] = None
     fast_attention_qkv_bias: Optional[bool] = None
+    fast_positional_embedding: Optional[Literal["absolute", "rope"]] = "rope"
 
     def __post_init__(self):
         super().__post_init__()
@@ -341,6 +342,11 @@ class DualARTransformer(BaseTransformer):
         self.fast_embeddings = nn.Embedding(
             config.codebook_size * (config.num_codebooks - 1), config.fast_dim
         )
+        if config.fast_positional_embedding == "absolute":
+            self.fast_wpe = nn.Embedding(config.num_codebooks, config.fast_dim)
+        else:
+            self.fast_wpe = None
+
         offset = torch.arange(
             0,
             self.config.codebook_size * (self.config.num_codebooks - 1),
@@ -360,7 +366,7 @@ class DualARTransformer(BaseTransformer):
         )
 
         self.fast_layers = nn.ModuleList(
-            TransformerBlock(override_config, use_sdpa=False)
+            TransformerBlock(override_config, use_sdpa=False, is_fast=True)
             for _ in range(config.n_fast_layer)
         )
         self.fast_norm = RMSNorm(config.fast_dim, eps=config.norm_eps)
@@ -370,17 +376,22 @@ class DualARTransformer(BaseTransformer):
             bias=False,
         )
 
-        self.register_buffer(
-            "fast_freqs_cis",
-            precompute_freqs_cis(
-                config.num_codebooks,
-                config.fast_dim // config.fast_n_head,
-                config.rope_base,
-            ),
-            persistent=False,
-        )
+        if config.fast_positional_embedding == "rope":
+            self.register_buffer(
+                "fast_freqs_cis",
+                precompute_freqs_cis(
+                    config.num_codebooks,
+                    config.fast_dim // config.fast_n_head,
+                    config.rope_base,
+                ),
+                persistent=False,
+            )
+        else:
+            self.fast_freqs_cis = None
+
         self.apply(self._init_weights)
 
+    @torch.compile
     def forward(
         self,
         inp: Tensor,
@@ -416,6 +427,13 @@ class DualARTransformer(BaseTransformer):
 
         x_bs, x_len = x.size(0), x.size(1)
         x = x[~codebook_mask]
+
+        if self.fast_wpe is not None:
+            assert x_len <= self.config.num_codebooks
+            pos_embs = self.fast_wpe(
+                torch.arange(0, self.config.num_codebooks).to(x.device)
+            )
+            x += pos_embs
 
         for layer in self.fast_layers:
             if self.config.use_gradient_checkpointing and self.training:
@@ -456,9 +474,11 @@ class DualARTransformer(BaseTransformer):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, config: BaseModelArgs, use_sdpa: bool = True) -> None:
+    def __init__(
+        self, config: BaseModelArgs, use_sdpa: bool = True, is_fast: bool = False
+    ) -> None:
         super().__init__()
-        self.attention = Attention(config, use_sdpa=use_sdpa)
+        self.attention = Attention(config, is_fast=is_fast, use_sdpa=use_sdpa)
         self.feed_forward = FeedForward(config)
         self.ffn_norm = RMSNorm(config.dim, config.norm_eps)
         self.attention_norm = RMSNorm(config.dim, config.norm_eps)
@@ -476,7 +496,9 @@ class TransformerBlock(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, config: BaseModelArgs, use_sdpa: bool = True):
+    def __init__(
+        self, config: BaseModelArgs, use_sdpa: bool = True, is_fast: bool = False
+    ):
         super().__init__()
         assert config.dim % config.n_head == 0
 
@@ -494,6 +516,7 @@ class Attention(nn.Module):
         self.n_local_heads = config.n_local_heads
         self.dim = config.dim
         self.use_sdpa = use_sdpa
+        self.is_fast = is_fast
         self._register_load_state_dict_pre_hook(self.load_hook)
 
     def load_hook(self, state_dict, prefix, *args):
@@ -506,7 +529,7 @@ class Attention(nn.Module):
     def forward(
         self,
         x: Tensor,
-        freqs_cis: Tensor,
+        freqs_cis: Optional[Tensor],
         mask: Tensor,
         input_pos: Optional[Tensor] = None,
     ) -> Tensor:
@@ -519,8 +542,9 @@ class Attention(nn.Module):
         k = k.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         v = v.view(bsz, seqlen, self.n_local_heads, self.head_dim)
 
-        q = apply_rotary_emb(q, freqs_cis)
-        k = apply_rotary_emb(k, freqs_cis)
+        if not self.is_fast and freqs_cis is not None:
+            q = apply_rotary_emb(q, freqs_cis)
+            k = apply_rotary_emb(k, freqs_cis)
 
         q, k, v = map(lambda x: x.transpose(1, 2), (q, k, v))
 
@@ -533,7 +557,6 @@ class Attention(nn.Module):
             v,
             dropout_p=self.dropout if self.training else 0.0,
             is_causal=True,
-            # No third party attn_mask here to use flash_attention
             attn_mask=mask,
         )
 

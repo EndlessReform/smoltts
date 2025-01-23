@@ -12,3 +12,4 @@ wandb
 checkpoints
 datasets
 inits
+pytorch_trace.json
