@@ -13,7 +13,6 @@ from tokenizers import Tokenizer
 from typing import Literal, Union
 
 from mlx_inference.lm.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
-from mlx_inference.lm.config import ModelType
 from mlx_inference.lm.generate import generate_blocking
 from mlx_inference.lm.utils.prompt import PromptEncoder
 from mlx_inference.io.wav import pcm_to_wav_bytes
@@ -57,7 +56,7 @@ async def lifespan(app: FastAPI):
     print("Loading DualAR model...")
     model = DualARTransformer(config, token_config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
-    model.load_weights(model_path, strict=False)
+    model.load_weights(model_path, strict=True)
     # model = model.apply(lambda p: p.astype(mx.float32))
     mx.eval(model.parameters())
     model.eval()

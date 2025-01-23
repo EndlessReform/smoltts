@@ -105,7 +105,9 @@ class SingleBatchGenerator:
         x = hidden_states[mx.newaxis, :, :]
         fast_cache = make_prompt_cache(self.model, is_fast=True)
         for i in range(0, self.model.config.num_codebooks):
-            fast_logits = self.model.forward_generate_fast(x, cache=fast_cache)
+            fast_logits = self.model.forward_generate_fast(
+                x, cache=fast_cache, input_pos=i
+            )
             mx.eval(fast_logits)
 
             # TODO handle sampling, esp. if it sounds terrible
@@ -119,7 +121,7 @@ class SingleBatchGenerator:
 
             # model GETS higher
             code = next_token_tensor.flatten()[0]
-            if self.model.model_type.version == "wte":
+            if self.model.config.fast_wte_embedding == "full":
                 next_token_tensor += max(0, i * self.model.config.codebook_size)
             x = self.model.fast_embeddings(next_token_tensor)
             codes.append(code)

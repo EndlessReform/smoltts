@@ -1,8 +1,8 @@
 import mlx.core as mx
 import mlx.nn as nn
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
-from typing import Any, Optional, List, Tuple
+from typing import Any, Optional, List, Literal, Tuple
 
 from mlx_inference.lm.config import ModelType
 
@@ -35,6 +35,11 @@ class DualARModelArgs(BaseModel):
     fast_head_dim: int
     fast_intermediate_size: int
     fast_attention_qkv_bias: bool = False
+    fast_wte_embedding: Literal["flattened", "full"] = Field(default="flattened")
+    """
+    Flattened: Fish Speech default (indices are shared across RVQ levels), "full": RVQ is treated like main codebook
+    """
+    fast_positional_embedding: Literal["rope", "absolute"] = Field(default="rope")
 
     # meta
     use_gradient_checkpointing: bool = False
@@ -112,14 +117,20 @@ class DualARTransformer(nn.Module):
         else:
             self.fast_project_in = nn.Identity()
 
-        if model_type.family == "dual_ar" and model_type.version == "wte":
+        if config.fast_wte_embedding == "full":
             self.fast_embeddings = nn.Embedding(
                 config.codebook_size * (config.num_codebooks - 1), config.fast_dim
             )
         else:
             self.fast_embeddings = nn.Embedding(config.codebook_size, config.fast_dim)
+
+        if config.fast_positional_embedding == "absolute":
+            self.fast_wpe = nn.Embedding(config.num_codebooks, config.fast_dim)
+        else:
+            self.fast_wpe = None
+
         self.fast_layers = [
-            TransformerBlock(config) for _ in range(config.n_fast_layer)
+            TransformerBlock(config, is_fast=True) for _ in range(config.n_fast_layer)
         ]
         self.fast_norm = nn.RMSNorm(config.fast_dim, eps=config.norm_eps)
         self.fast_output = nn.Linear(config.fast_dim, config.codebook_size, bias=False)
@@ -150,7 +161,9 @@ class DualARTransformer(nn.Module):
 
     # def __call__(self, ):
     def forward_generate(
-        self, inputs: mx.array, cache: Optional[List[Any]] = None
+        self,
+        inputs: mx.array,
+        cache: Optional[List[Any]] = None,
     ) -> Tuple[mx.array, mx.array]:
         x = self.embed(inputs)
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
@@ -169,9 +182,19 @@ class DualARTransformer(nn.Module):
         return (token_logits, x)
 
     def forward_generate_fast(
-        self, x: mx.array, cache: Optional[List[Any]] = None
+        self,
+        x: mx.array,
+        cache: Optional[List[Any]] = None,
+        input_pos: Optional[int] = 0,
     ) -> mx.array:
+        """
+        Assumes (bsz, seqlen=1, fast_dim)
+        """
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
+        if self.fast_wpe is not None:
+            pos_emb = self.fast_wpe(mx.array([input_pos], dtype=mx.uint32))
+            x += pos_emb
+
         for layer, layer_cache in zip(
             self.fast_layers, cache or [None] * len(self.fast_layers)
         ):
@@ -182,9 +205,9 @@ class DualARTransformer(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, config: DualARModelArgs):
+    def __init__(self, config: DualARModelArgs, is_fast: bool = False):
         super().__init__()
-        self.attention = Attention(config)
+        self.attention = Attention(config, is_fast)
         self.feed_forward = MLP(config)
         self.ffn_norm = nn.RMSNorm(dims=config.dim, eps=config.norm_eps)
         self.attention_norm = nn.RMSNorm(config.dim, config.norm_eps)
@@ -198,14 +221,18 @@ class TransformerBlock(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, config: DualARModelArgs):
+    def __init__(self, config: DualARModelArgs, is_fast: bool = False):
         super().__init__()
         # GQA: groups split hidden dim evenly between them
         assert config.dim % config.n_head == 0
 
-        self.rope = nn.RoPE(
-            int(config.dim / config.n_head), traditional=True, base=config.rope_base
-        )
+        if config.fast_positional_embedding == "rope" or not is_fast:
+            self.rope = nn.RoPE(
+                int(config.dim / config.n_head), traditional=True, base=config.rope_base
+            )
+        else:
+            self.rope = None
+
         total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
         self.wqkv = nn.Linear(
             input_dims=config.dim,
@@ -239,14 +266,16 @@ class Attention(nn.Module):
 
         q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
         if cache is not None:
-            q = self.rope(q, offset=cache.offset)
-            k = self.rope(k, offset=cache.offset)
+            if self.rope is not None:
+                q = self.rope(q, offset=cache.offset)
+                k = self.rope(k, offset=cache.offset)
             k, v = cache.update_and_fetch(k, v)
 
         else:
             q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
-            q = self.rope(q)
-            k = self.rope(k)
+            if self.rope is not None:
+                q = self.rope(q)
+                k = self.rope(k)
 
         output = mx.fast.scaled_dot_product_attention(
             q=q, k=k, v=v, scale=self.scale, mask=mask
