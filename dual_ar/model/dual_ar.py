@@ -9,7 +9,6 @@ import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
 from torch.nn import functional as F
-from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -133,8 +132,25 @@ class BaseTransformer(nn.Module):
         super().__init__()
         self.config = config
         self.tokenizer = tokenizer
+        # TODO: handle cases where we don't do this
         SEMANTIC_TOKENS = [f"<|semantic:{i}|>" for i in range(0, config.codebook_size)]
         self.semantic_token_ids = tokenizer.encode("".join(SEMANTIC_TOKENS))
+        semantic_token_ids_tensor = torch.tensor(self.semantic_token_ids)
+        if not (torch.diff(semantic_token_ids_tensor) == 1).all():
+            raise ValueError("Semantic token IDs must be contiguous")
+
+        self.register_buffer(
+            "semantic_token_start", semantic_token_ids_tensor[0], persistent=False
+        )
+        self.register_buffer(
+            "semantic_token_end", semantic_token_ids_tensor[-1], persistent=False
+        )
+        offset = torch.arange(
+            0,
+            self.config.num_codebooks * self.config.codebook_size,
+            self.config.codebook_size,
+        ).unsqueeze(1)
+        self.register_buffer("semantic_offset", offset, persistent=False)
 
         # Slow transformer
         self.embeddings = nn.Embedding(
@@ -177,10 +193,7 @@ class BaseTransformer(nn.Module):
             ),
             persistent=False,
         )
-
-        # For kv cache
-        self.max_batch_size = -1
-        self.max_seq_len = -1
+        self.max_seq_len = config.max_seq_len if config.max_seq_len is not None else -1
 
         if init_weights:
             self.apply(self._init_weights)
@@ -188,28 +201,22 @@ class BaseTransformer(nn.Module):
     @torch.compile
     def embed(self, x: Tensor) -> Tensor:
         # Start with base token embedding
-        token_embed = self.embeddings(x[:, 0])
+        text_embeds = self.embeddings(x[:, 0, :])
 
         # Get all codebook embeddings
-        embeds = []
-        semantic_token_ids_tensor = torch.tensor(
-            self.semantic_token_ids, device=x.device
-        )
-
-        for i in range(self.config.num_codebooks):
-            offset = x[:, i + 1] + i * self.config.codebook_size
-            emb = self.codebook_embeddings(offset)
-            embeds.append(emb)
-
-        # Stack and sum codebook embeddings
-        vq_embeds_stack = torch.stack(embeds, dim=1)
-        vq_embeds_sum = vq_embeds_stack.sum(dim=1)
+        vq_embeds = self.codebook_embeddings(x[:, 1:, :] + self.semantic_offset)
+        vq_embeds_sum = vq_embeds.sum(dim=1)
 
         # Mask summed embeddings where we don't have semantic tokens
-        vq_embeds_sum[~torch.isin(x[:, 0], semantic_token_ids_tensor)] = 0
+        # vq_embeds_sum[~torch.isin(x[:, 0], self.semantic_token_tensor)] = 0
+        vq_embeds_sum[
+            ~(
+                (x[:, 0] >= self.semantic_token_start)
+                & (x[:, 0] <= self.semantic_token_end)
+            )
+        ] = 0
 
-        # Actually USE the embeddings this time 🤦
-        return token_embed + vq_embeds_sum
+        return text_embeds + vq_embeds_sum
 
     def forward(
         self,
@@ -339,7 +346,7 @@ class DualARTransformer(BaseTransformer):
             self.config.codebook_size * (self.config.num_codebooks - 1),
             self.config.codebook_size,
         ).unsqueeze(1)
-        self.register_buffer("codebook_offset", offset)
+        self.register_buffer("codebook_offset", offset, persistent=False)
 
         # The equivalent bs is so large that sdpa doesn't work
         override_config = dataclasses.replace(
@@ -520,15 +527,15 @@ class Attention(nn.Module):
         k = k.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
         v = v.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
 
-        with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
-            y = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                dropout_p=self.dropout if self.training else 0.0,
-                is_causal=True,
-                # No third party attn_mask here to use flash_attention
-            )
+        y = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            dropout_p=self.dropout if self.training else 0.0,
+            is_causal=True,
+            # No third party attn_mask here to use flash_attention
+            attn_mask=mask,
+        )
 
         y = y.transpose(1, 2).contiguous().view(bsz, seqlen, self.dim)
 
