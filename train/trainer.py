@@ -4,10 +4,11 @@ from functools import partial
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
-from torch.profiler import profile, record_function, ProfilerActivity
 from tqdm import tqdm
-from typing import Optional, List
+from typing import List
 import wandb
+import sys
+import time
 
 from dual_ar.model.dual_ar import DualARTransformer
 from train.config import TrainingConfig
@@ -74,56 +75,19 @@ def train_step(
     labels = batch["labels"].to(device)
     pad_mask = batch["pad_mask"].to(device)
 
+    # time.sleep(0.02)
     outputs = model(inp=tokens, key_padding_mask=pad_mask)
+    # time.sleep(0.15)
     base_loss, semantic_loss, _ = compute_losses(outputs, labels)
     loss = base_loss + semantic_loss
 
     optimizer.zero_grad()
     loss.backward()
+    # time.sleep(0.05)
     if gradient_clip > 0:
         torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
     optimizer.step()
     scheduler.step()
-
-    return TrainStepOutput(
-        loss=loss,
-        base_loss=base_loss.item(),
-        semantic_loss=semantic_loss.item(),
-        lr=scheduler.get_last_lr()[0],
-    )
-
-
-def train_step_profiled(
-    model: torch.nn.Module,
-    batch: dict,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler,
-    device: torch.device,
-    gradient_clip: float = 0.0,
-    prof=None,  # Pass through profiler context
-) -> TrainStepOutput:
-    """Profiled version of train_step"""
-    tokens = batch["tokens"].to(device)
-    labels = batch["labels"].to(device)
-    pad_mask = batch["pad_mask"].to(device)
-
-    with record_function("forward"):
-        outputs = model(inp=tokens, key_padding_mask=pad_mask)
-        base_loss, semantic_loss, _ = compute_losses(outputs, labels)
-        loss = base_loss + semantic_loss
-
-    with record_function("backward"):
-        optimizer.zero_grad()
-        loss.backward()
-        if gradient_clip > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-
-    with record_function("optimizer"):
-        optimizer.step()
-        scheduler.step()
-
-    if prof is not None:
-        prof.step()  # Advance profiler steps
 
     return TrainStepOutput(
         loss=loss,
@@ -223,6 +187,11 @@ def train(
         train_ds, val_ds, config, pad_id=pad_id
     )
 
+    # Add right before the training loop
+    WARMUP_STEPS = 30  # Warmup iterations
+    PROFILE_STEPS = 10  # Profile these many steps
+    TOTAL_STEPS = WARMUP_STEPS + PROFILE_STEPS
+
     for epoch in range(start_epoch, config.max_epochs):
         model.train()
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
@@ -248,6 +217,9 @@ def train(
                 loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
                 lr=f"{step_output.lr:.2e}",
             )
+            # if global_step >= TOTAL_STEPS:
+            #     print("\nProfile run complete")
+            #     sys.exit(0)
 
             # Validation
             if global_step % config.val_every_n_steps == 0 and config.use_wandb:
@@ -278,95 +250,6 @@ def train(
                 )
 
             global_step += 1
-    # PROFILING SETUP
-    # WARMUP_STEPS = 20
-    # PROFILE_STEPS = 10  # Profile for 7 steps after warmup
-    # TOTAL_STEPS = WARMUP_STEPS + PROFILE_STEPS
-
-    # # Initialize profiler after warmup
-    # profiler = torch.profiler.profile(
-    #     activities=[
-    #         ProfilerActivity.CPU,
-    #         ProfilerActivity.CUDA,
-    #     ],
-    #     schedule=torch.profiler.schedule(
-    #         wait=0,  # No wait after warmup since we handle that separately
-    #         warmup=0,  # Already warmed up
-    #         active=PROFILE_STEPS,
-    #         repeat=1,
-    #     ),
-    #     record_shapes=True,
-    #     with_stack=True,
-    #     profile_memory=True,
-    #     with_flops=True,
-    # )
-
-    # step_count = 0
-    # try:
-    #     for epoch in range(start_epoch, config.max_epochs):
-    #         model.train()
-    #         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
-
-    #         for batch in progress_bar:
-    #             # Handle warmup
-    #             if step_count < WARMUP_STEPS:
-    #                 train_step(
-    #                     model, batch, optimizer, scheduler, device, config.gradient_clip
-    #                 )
-    #                 step_count += 1
-    #                 continue
-
-    #             # Start profiling after warmup
-    #             if step_count == WARMUP_STEPS:
-    #                 profiler.start()
-
-    #             # Run profiled training step
-    #             step_output = train_step_profiled(
-    #                 model,
-    #                 batch,
-    #                 optimizer,
-    #                 scheduler,
-    #                 device,
-    #                 config.gradient_clip,
-    #                 profiler,
-    #             )
-
-    #             # Update progress
-    #             progress_bar.set_postfix(
-    #                 loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
-    #                 lr=f"{step_output.lr:.2e}",
-    #             )
-
-    #             step_count += 1
-    #             global_step += 1
-
-    #             # Stop after collecting enough profile data
-    #             if step_count >= TOTAL_STEPS:
-    #                 profiler.stop()
-
-    #                 # Print key statistics
-    #                 print("\nPROFILER RESULTS:")
-    #                 print(
-    #                     profiler.key_averages().table(
-    #                         sort_by="cuda_time_total", row_limit=20
-    #                     )
-    #                 )
-
-    #                 # Export trace
-    #                 profiler.export_chrome_trace("pytorch_trace.json")
-
-    #                 # Memory snapshot
-    #                 print("\nMEMORY SNAPSHOT:")
-    #                 print(torch.cuda.memory_summary())
-
-    #                 raise ValueError("Profiling completed successfully")
-
-    # except ValueError as e:
-    #     if str(e) != "Profiling completed successfully":
-    #         raise
-    #     print("\nProfiling finished, training terminated as planned")
-
-    # print("FINAL SAVE")
     checkpoint_manager.save(
         TrainingState(
             model=model,

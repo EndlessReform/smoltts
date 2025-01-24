@@ -426,7 +426,8 @@ class DualARTransformer(BaseTransformer):
             codebook_mask[:8] = False
 
         x_bs, x_len = x.size(0), x.size(1)
-        x = x[~codebook_mask]
+        indices = torch.arange(x_bs, device=x.device)[~codebook_mask]
+        x = torch.index_select(x, 0, indices)
 
         if self.fast_wpe is not None:
             assert x_len <= self.config.num_codebooks
@@ -447,7 +448,7 @@ class DualARTransformer(BaseTransformer):
         fast_out = self.fast_norm(x)
         codebook_logits = self.fast_output(fast_out)
 
-        # Re-pad the codebook_logits
+        # re-pad the codebook_logits
         buffer = torch.zeros(
             x_bs,
             x_len,
@@ -455,7 +456,17 @@ class DualARTransformer(BaseTransformer):
             device=codebook_logits.device,
             dtype=codebook_logits.dtype,
         )
-        buffer[~codebook_mask] = codebook_logits
+
+        # NEW: Scatter the results back efficiently:
+        # 1. view(-1,1,1) makes indices into a 3D tensor of shape (num_kept_batches, 1, 1)
+        # 2. expand tiles those indices across seq_len and hidden_dim
+        # 3. scatter_ puts the logits back in their original batch positions
+        buffer.scatter_(
+            0,
+            indices.view(-1, 1, 1).expand(-1, x_len, codebook_logits.size(-1)),
+            codebook_logits,
+        )
+
         codebook_logits = buffer
 
         assert codebook_logits.shape[1] == self.config.num_codebooks
@@ -565,6 +576,7 @@ class Attention(nn.Module):
         return self.wo(y)
 
 
+@torch.compile
 class FeedForward(nn.Module):
     def __init__(self, config: BaseModelArgs) -> None:
         super().__init__()
