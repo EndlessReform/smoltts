@@ -7,8 +7,6 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from typing import List
 import wandb
-import sys
-import time
 
 from dual_ar.model.dual_ar import DualARTransformer
 from train.config import TrainingConfig
@@ -131,6 +129,7 @@ def validate(
             del tokens, labels, outputs, base_loss, semantic_loss, loss
             torch.cuda.empty_cache()
 
+    model.train()
     return {
         "loss": total_loss / num_batches,
         "base_loss": total_base_loss / num_batches,
