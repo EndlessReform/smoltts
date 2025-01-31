@@ -7,6 +7,7 @@ from typing import Any, Optional, List
 from mlx_inference.lm.dual_ar import DualARTransformer
 from mlx_inference.lm.cache import make_prompt_cache, KVCache
 from mlx_inference.settings import GenerationSettings
+from mlx_inference.lm.utils.samplers import min_p_sampling
 
 
 class VQToken(BaseModel):
@@ -78,19 +79,18 @@ class SingleBatchGenerator:
         #     else logits
         # )
         slow_logits = logits
-        # TODO handle sampling, I just want SOME output
         if self.generation_settings.default_temp == 0.0:
             token_ids = mx.argmax(slow_logits, axis=-1)
+        elif self.generation_settings.min_p is not None:
+            token_ids = min_p_sampling(
+                slow_logits,
+                min_p=self.generation_settings.min_p,
+                temperature=self.generation_settings.default_temp,
+            )
         else:
+            # TODO improve sampling, I just want SOME output
             slow_logits = slow_logits / self.generation_settings.default_temp
-            # if self.generation_settings.min_p is None:
             token_ids = mx.random.categorical(slow_logits)
-            # else:
-            #     token_ids = min_p_sampling(
-            #         slow_logits,
-            #         self.generation_settings.min_p,
-            #         self.generation_settings.default_temp,
-            #     )
 
         # slow_token_id = (
         #     rescale_semantic_tokens(
@@ -114,8 +114,16 @@ class SingleBatchGenerator:
             if (
                 fast_temp := self.generation_settings.default_fast_temp
             ) is not None and fast_temp > 0:
-                fast_logits = fast_logits / fast_temp
-                next_token_tensor = mx.random.categorical(fast_logits)
+                if self.generation_settings.min_p is not None:
+                    next_token_tensor = min_p_sampling(
+                        fast_logits.squeeze(0),
+                        min_p=self.generation_settings.min_p,
+                        temperature=self.generation_settings.default_fast_temp,
+                    )
+                    next_token_tensor = next_token_tensor[mx.newaxis, :]
+                else:
+                    fast_logits = fast_logits / fast_temp
+                    next_token_tensor = mx.random.categorical(fast_logits)
             else:
                 next_token_tensor = mx.argmax(fast_logits, axis=-1)
 

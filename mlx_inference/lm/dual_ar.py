@@ -67,9 +67,7 @@ class TokenConfig(BaseModel):
         if model.family == "dual_ar" or (
             model.family == "fish" and model.version == "1.5"
         ):
-            print("starting dualar")
             semantic_start_id = tokenizer.token_to_id("<|semantic:0|>")
-            print(semantic_start_id)
         else:
             semantic_start_id = tokenizer.token_to_id("<|semantic|>") or 5
 
