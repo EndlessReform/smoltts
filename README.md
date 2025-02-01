@@ -22,8 +22,13 @@ If you are not creating a new dataset using raw audio instead of Mimi codes, ple
 
 ```bash
 # If you are not making new audio datasets, feel free to use a sane Python version instead
-uv venv --python 3.9
-source .venv/bin/activate
-uv pip install -r requirements.txt
+uv sync
 uv pip install -e .
 ```
+
+Create a `.env` file and add:
+
+```bash
+HUGGINGFACE_TOKEN=sk-placeholder
+```
+
