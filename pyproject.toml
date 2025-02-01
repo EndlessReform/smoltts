@@ -1,23 +1,35 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "smoltts"
+name = "dual-ar"
 version = "0.1.0"
-description = "A simple DualAR TTS model trained on LJSpeech"
-authors = [{ name = "Jacob Keisling", email = "jacob@keisling.me" }]
+description = "A repo for training DualAR speech models"
 readme = "README.md"
-license = { file = "LICENSE" }
+authors = [{ name = "Jacob Keisling", email = "jacob@keisling.me" }]
+requires-python = ">=3.9"
 dependencies = [
-    # Add your runtime dependencies here
-    "numpy",  # Example dependency
-    "pandas",
+    "datasets>=3.2.0",
+    "einops>=0.8.0",
+    "huggingface-hub>=0.27.1",
+    "librosa>=0.10.2.post1",
+    "python-dotenv>=1.0.1",
+    "safetensors>=0.5.2",
+    "setuptools>=75.8.0",
+    "soundfile>=0.13.0",
+    "torch>=2.5.1",
+    "torchaudio>=2.5.1",
+    "transformers>=4.48.0",
+    "wandb>=0.19.4",
 ]
+license = { file = "LICENSE" }
 
 [tool.setuptools]
-packages = ["data_pipeline", "dual_ar", "train"]
+packages = ["data_pipeline", "dual_ar", "train", "mlx_inference"]
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.uv.workspace]
+members = ["mlx_inference"]
+
+[dependency-groups]
+dev = ["ipykernel>=6.29.5"]
