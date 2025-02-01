@@ -7,8 +7,6 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from typing import List
 import wandb
-import sys
-import time
 
 from dual_ar.model.dual_ar import DualARTransformer
 from train.config import TrainingConfig
@@ -131,6 +129,7 @@ def validate(
             del tokens, labels, outputs, base_loss, semantic_loss, loss
             torch.cuda.empty_cache()
 
+    model.train()
     return {
         "loss": total_loss / num_batches,
         "base_loss": total_base_loss / num_batches,
@@ -222,7 +221,11 @@ def train(
             #     sys.exit(0)
 
             # Validation
-            if global_step % config.val_every_n_steps == 0 and config.use_wandb:
+            if (
+                global_step % config.val_every_n_steps == 0
+                and config.use_wandb
+                and global_step != 0
+            ):
                 val_metrics = validate(model, val_loader, device)
                 wandb.log(
                     {
@@ -230,7 +233,7 @@ def train(
                         "val/base_loss": float(val_metrics["base_loss"]),
                         "val/semantic_loss": float(val_metrics["semantic_loss"]),
                         **{
-                            f"val/codebook_{i+1}_loss": loss
+                            f"val/codebook_{i + 1}_loss": loss
                             for i, loss in enumerate(val_metrics["codebook_losses"])
                         },
                     },

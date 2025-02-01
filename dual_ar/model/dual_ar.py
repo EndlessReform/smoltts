@@ -210,12 +210,13 @@ class BaseTransformer(nn.Module):
 
         # Mask summed embeddings where we don't have semantic tokens
         # vq_embeds_sum[~torch.isin(x[:, 0], self.semantic_token_tensor)] = 0
-        vq_embeds_sum[
-            ~(
-                (x[:, 0] >= self.semantic_token_start)
-                & (x[:, 0] <= self.semantic_token_end)
-            )
-        ] = 0
+        # vq_embeds_sum[
+        #     ~(
+        #         (x[:, 0] >= self.semantic_token_start)
+        #         & (x[:, 0] <= self.semantic_token_end)
+        #     )
+        # ] = 0
+        vq_embeds_sum[x[:, 1] == 0] = 0
 
         return text_embeds + vq_embeds_sum
 
