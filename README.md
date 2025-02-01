@@ -32,3 +32,4 @@ Create a `.env` file and add:
 HUGGINGFACE_TOKEN=sk-placeholder
 ```
 
+For the dataset and init, see `data_pipeline/README.md`.
