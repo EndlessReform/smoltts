@@ -221,7 +221,11 @@ def train(
             #     sys.exit(0)
 
             # Validation
-            if global_step % config.val_every_n_steps == 0 and config.use_wandb:
+            if (
+                global_step % config.val_every_n_steps == 0
+                and config.use_wandb
+                and global_step != 0
+            ):
                 val_metrics = validate(model, val_loader, device)
                 wandb.log(
                     {
@@ -229,7 +233,7 @@ def train(
                         "val/base_loss": float(val_metrics["base_loss"]),
                         "val/semantic_loss": float(val_metrics["semantic_loss"]),
                         **{
-                            f"val/codebook_{i+1}_loss": loss
+                            f"val/codebook_{i + 1}_loss": loss
                             for i, loss in enumerate(val_metrics["codebook_losses"])
                         },
                     },

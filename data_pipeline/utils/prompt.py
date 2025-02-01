@@ -71,6 +71,7 @@ class PromptEncoder:
         semantic_line = (codes[0, :] + self.semantic_offset).unsqueeze(0)
         lower_codes = codes if self.config.duplicate_code1 else codes[1:, :]
 
+        # TODO DO NOT MERGE, WRONG BAD
         if self.config.acoustic_delay != 0:
             semantic_suffix = torch.tensor(
                 [self.pad_id] * self.config.acoustic_delay, dtype=torch.uint32
@@ -81,4 +82,33 @@ class PromptEncoder:
 
         vq_block = torch.cat([semantic_line, lower_codes])
         block = torch.cat([vq_block, self.trailing_im_end], dim=1)
+        return block
+
+    def encode_vq_corrupt(self, codes: torch.Tensor, dropout=0.2) -> torch.Tensor:
+        """
+        NO temporal delays or offsetting.
+
+        Corrupts only the non-semantic codes.
+        """
+        if codes.ndim != 2:
+            raise ValueError("Must be single batch!")
+        
+        semantic_line = (codes[0, :] + self.semantic_offset).unsqueeze(0)
+        first_residual = codes[0, :].unsqueeze(0)
+        remaining_codes = codes[1:, :]
+
+        corrupt_mask = torch.rand_like(remaining_codes.float()) < dropout
+        
+        # TODO: parameterize for 1024-size codebook
+        random_codes = torch.randint(
+            low=1,
+            high=2048,
+            size=remaining_codes.shape,
+            device=remaining_codes.device
+        )
+
+        corrupted_remaining_codes = torch.where(corrupt_mask, random_codes, remaining_codes)
+        vq_block = torch.cat([semantic_line, first_residual, corrupted_remaining_codes])
+        block = torch.cat([vq_block, self.trailing_im_end], dim=1)
+        
         return block
