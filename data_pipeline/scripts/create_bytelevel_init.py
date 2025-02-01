@@ -54,13 +54,6 @@ def add_special_tokens(tokenizer: Tokenizer, config: Config) -> Tokenizer:
 
     tokenizer.add_special_tokens(charset)
 
-    # ChatML template
-    # tokenizer.chat_template = CHATML_TEMPLATE
-    # tokenizer.pad_token = "<|pad|>"
-    # tokenizer.eos_token = "<|endoftext|>"
-    # tokenizer.bos_token = "<|im_start|>"
-    # tokenizer.unk_token = "<|unknown|>"
-
     return tokenizer
 
 parser = ArgumentParser(description="Create BPE tokenizer for Kokoro-style bounded speaker models")

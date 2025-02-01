@@ -24,4 +24,19 @@ LibriTTS-R dataset: `encode_libritts.py` to encode, then `upload_libritts.ipynb`
 
 ## Final tokenization
 
+Assume in input:
+- `text_normalized`: String
+- `codes`: Tensor of Mimi codes
+
+Optional:
+- `speaker_id`: string, name of speaker (e.g. "alloy")
+
+Create your config (ideally version-controlled in `data_pipeline/scripts/audio_tokenizer_configs`). Then, for example:
+
+```bash
+uv run data_pipeline/scripts/chatml_tokenize_dataset.py \
+    -c ./data_pipeline/scripts/audio_tokenizer_configs/project_gutenberg.json \
+    -o ./datasets/tokenized_project_gutenberg_bytes_kokoro
+```
+
 tokenize_libritts.ipynb`: Tokenize, ChatML format, and pack by speaker index
