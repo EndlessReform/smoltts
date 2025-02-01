@@ -1,0 +1,32 @@
+{
+    "dataset_id": "jkeisling/project-gutenberg-kokoro-2K",
+    "speaker": {
+        "strategy": "id_token",
+        "speaker_names": [
+            "af_heart",
+            "af_bella",
+            "af_nova",
+            "af_sky",
+            "af_sarah",
+            "am_michael",
+            "am_puck",
+            "am_liam",
+            "bf_emma",
+            "bf_isabella",
+            "bm_fable"
+        ]
+    },
+    "tokenization": {
+        "tokenizer_path": "inits/smoltts_byte_kokoro",
+        "strategy": "bytelevel"
+    },
+    "audio": {
+        "frame_rate": 12.5,
+        "max_sample_secs": 15.0
+    },
+    "packing": {
+        "max_sequence_length": 768,
+        "max_items_per_pack": 5,
+        "window_size": 1600
+    }
+}
