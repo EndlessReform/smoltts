@@ -1,0 +1,24 @@
+{
+    "dataset_id": "jkeisling/project-gutenberg-kokoro-2K",
+    "speaker": {
+        "strategy": "id_token",
+        "speaker_names": [
+            "default",
+            "sarah",
+            "sky",
+            "adam",
+            "emma",
+            "isabella",
+            "george",
+            "lewis"
+        ]
+    },
+    "tokenization": {
+        "tokenizer_path": "inits/smoltts_byte_kokoro",
+        "strategy": "bytelevel"
+    },
+    "audio": {
+        "frame_rate": 12.5,
+        "max_sample_secs": 15.0
+    }
+}
