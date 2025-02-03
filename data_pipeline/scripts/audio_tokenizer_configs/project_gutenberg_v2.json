@@ -1,5 +1,5 @@
 {
-    "dataset_id": "jkeisling/project-gutenberg-kokoro-2K",
+    "dataset_id": "jkeisling/projectgutenberg-kokoro_v1-mimi",
     "speaker": {
         "strategy": "id_token",
         "speaker_names": [

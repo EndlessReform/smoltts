@@ -10,14 +10,23 @@ def load_splits(path: str, max_sequence_len: int = 768) -> Tuple[Dataset, Datase
     print(f"Loading dataset from {path}")
     dataset = load_from_disk(path)
     dataset = dataset.with_format("torch")
-    if "full" in list(dataset.keys()):
+    print(f"Keys: {dataset.keys()}")
+    if "full" in (splits := list(dataset.keys())):
         dataset = dataset["full"].shuffle()
         split_dataset = dataset.train_test_split(test_size=5000)
         train_dataset = split_dataset["train"]
         val_dataset = split_dataset["test"]
-    else:
+    elif "val" in splits:
         train_dataset = dataset["train"].shuffle(42)
         val_dataset = dataset["val"]
+    else:
+        dataset.shuffle(42)
+        split_dataset = dataset["train"].train_test_split(test_size=5000)
+        train_dataset = split_dataset["train"]
+        val_dataset = split_dataset["test"]
+
+    print(train_dataset.column_names)
+    print(val_dataset.column_names)
     return train_dataset, val_dataset
 
 
