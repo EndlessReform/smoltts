@@ -4,7 +4,7 @@ import time
 from tqdm import tqdm
 from typing import Any, Optional, List
 
-from mlx_inference.lm.dual_ar import DualARTransformer
+from mlx_inference.lm.rq_transformer import RQTransformer
 from mlx_inference.lm.cache import make_prompt_cache, KVCache
 from mlx_inference.settings import GenerationSettings
 from mlx_inference.lm.utils.samplers import min_p_sampling
@@ -17,7 +17,7 @@ class VQToken(BaseModel):
 
 
 class SingleBatchGenerator:
-    model: DualARTransformer
+    model: RQTransformer
     input_pos: int
     generation_settings: GenerationSettings
     prompt: Optional[mx.array]
@@ -27,7 +27,7 @@ class SingleBatchGenerator:
 
     def __init__(
         self,
-        model: DualARTransformer,
+        model: RQTransformer,
         prompt: mx.array,
         generation_settings: GenerationSettings,
         audio_only: bool = True,
@@ -105,9 +105,7 @@ class SingleBatchGenerator:
         x = hidden_states[mx.newaxis, :, :]
         fast_cache = make_prompt_cache(self.model, is_fast=True)
         for i in range(0, self.model.config.num_codebooks):
-            fast_logits = self.model.forward_generate_fast(
-                x, cache=fast_cache, input_pos=i
-            )
+            fast_logits = self.model.forward_generate_fast(x, i, cache=fast_cache)
             mx.eval(fast_logits)
 
             # TODO handle sampling, esp. if it sounds terrible
@@ -129,8 +127,9 @@ class SingleBatchGenerator:
 
             # model GETS higher
             code = next_token_tensor.flatten()[0]
-            if self.model.config.fast_wte_embedding == "full":
+            if self.model.config.depthwise_wte:
                 next_token_tensor += max(0, i * self.model.config.codebook_size)
+
             x = self.model.fast_embeddings(next_token_tensor)
             codes.append(code)
 
@@ -149,7 +148,7 @@ class SingleBatchGenerator:
 
 
 def generate_blocking(
-    model: DualARTransformer,
+    model: RQTransformer,
     prompt: mx.array,
     generation_settings: GenerationSettings,
     audio_only: bool = True,

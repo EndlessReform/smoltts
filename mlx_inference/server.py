@@ -12,7 +12,11 @@ import time
 from tokenizers import Tokenizer
 from typing import Literal, Union
 
-from mlx_inference.lm.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
+from mlx_inference.lm.rq_transformer import (
+    RQTransformerModelArgs,
+    RQTransformer,
+    TokenConfig,
+)
 from mlx_inference.lm.generate import generate_blocking
 from mlx_inference.lm.utils.prompt import PromptEncoder
 from mlx_inference.io.wav import pcm_to_wav_bytes
@@ -47,14 +51,14 @@ async def lifespan(app: FastAPI):
 
     load_start_time = time.time()
     print("Loading model configuration and tokenizer...")
-    config = DualARModelArgs.from_json_file(str(checkpoint_dir / "config.json"))
+    config = RQTransformerModelArgs.from_json_file(str(checkpoint_dir / "config.json"))
     tokenizer = Tokenizer.from_file(str(checkpoint_dir / "tokenizer.json"))
     token_config = TokenConfig.from_tokenizer(
         model=model_type, tokenizer=tokenizer, config=config
     )
 
     print("Loading DualAR model...")
-    model = DualARTransformer(config, token_config, model_type)
+    model = RQTransformer(config, token_config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
     model.load_weights(model_path, strict=True)
     mx.eval(model.parameters())
