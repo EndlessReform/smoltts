@@ -8,7 +8,7 @@ from tqdm import tqdm
 from typing import List
 import wandb
 
-from dual_ar.model.dual_ar import DualARTransformer
+from dual_ar.model.rq_transformer import RQTransformer
 from train.config import TrainingConfig
 from train.data import collate_fn
 from train.state import TrainingState, CheckpointManager
@@ -165,7 +165,7 @@ def create_dataloaders(
 
 
 def train(
-    model: DualARTransformer,
+    model: RQTransformer,
     train_ds: Dataset,
     val_ds: Dataset,
     config: TrainingConfig,

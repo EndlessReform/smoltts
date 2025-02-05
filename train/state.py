@@ -1,15 +1,15 @@
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple, Optional
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
-from dual_ar.model.dual_ar import DualARTransformer
+from dual_ar.model.rq_transformer import RQTransformer
 from train.config import TrainingConfig
 
 
 class TrainingState(NamedTuple):
-    model: DualARTransformer
+    model: RQTransformer
     optimizer: Optional[Optimizer]
     scheduler: Optional[LRScheduler]
     start_epoch: int
@@ -64,7 +64,7 @@ class CheckpointManager:
             print("Will reinitialize optimizer and scheduler with new settings")
 
         # Load model with original architecture but override weights
-        model = DualARTransformer.from_pretrained(
+        model = RQTransformer.from_pretrained(
             config.init_folder,
             load_weights=False,
         )
@@ -88,7 +88,7 @@ class CheckpointManager:
 
     def init_model(self, config: TrainingConfig, device: torch.device) -> TrainingState:
         """Create a fresh model and training state"""
-        model = DualARTransformer.from_pretrained(
+        model = RQTransformer.from_pretrained(
             config.init_folder, load_weights=config.use_pretrained
         )
         num_params = sum(p.numel() for p in model.parameters())
