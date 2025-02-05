@@ -19,6 +19,8 @@
     "n_head": 9,
     "n_layer": 10,
     "n_local_heads": 3,
+    "depthwise_wte": true,
+    "depthwise_output": true,
     "norm_eps": 1e-05,
     "num_codebooks": 8,
     "rope_base": 100000,

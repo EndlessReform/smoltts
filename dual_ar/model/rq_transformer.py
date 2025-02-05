@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass
 import math
 from pathlib import Path
-from typing import Optional, Literal, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -93,8 +93,8 @@ class RQTransformerModelArgs(BaseModelArgs):
     fast_head_dim: Optional[int] = None
     fast_intermediate_size: Optional[int] = None
     fast_attention_qkv_bias: Optional[bool] = None
-    fast_positional_embedding: Optional[Literal["absolute", "rope"]] = "rope"
-    depthwise_parameterization: Optional[bool] = False
+    depthwise_wte: Optional[bool] = False
+    depthwise_output: Optional[bool] = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -336,13 +336,12 @@ class RQTransformer(BaseTransformer):
             self.fast_project_in = nn.Identity()
 
         # Fast transformer
-        self.fast_embeddings = nn.Embedding(
-            config.codebook_size * (config.num_codebooks - 1), config.fast_dim
+        fast_emb_input_dim = (
+            config.codebook_size * (config.num_codebooks - 1)
+            if config.depthwise_wte
+            else config.codebook_size
         )
-        if config.fast_positional_embedding == "absolute":
-            self.fast_wpe = nn.Embedding(config.num_codebooks, config.fast_dim)
-        else:
-            self.fast_wpe = None
+        self.fast_embeddings = nn.Embedding(fast_emb_input_dim, config.fast_dim)
 
         offset = torch.arange(
             0,
@@ -367,27 +366,26 @@ class RQTransformer(BaseTransformer):
             for _ in range(config.n_fast_layer)
         )
         self.fast_norm = RMSNorm(config.fast_dim, eps=config.norm_eps)
-        # self.fast_output = nn.Linear(
-        #     config.fast_dim,
-        #     config.codebook_size,
-        #     bias=False,
-        # )
-        self.fast_output = DepthwiseLinear(
-            config.num_codebooks, config.fast_dim, config.codebook_size
-        )
-
-        if config.fast_positional_embedding == "rope":
-            self.register_buffer(
-                "fast_freqs_cis",
-                precompute_freqs_cis(
-                    config.num_codebooks,
-                    config.fast_dim // config.fast_n_head,
-                    config.rope_base,
-                ),
-                persistent=False,
+        if config.depthwise_output:
+            self.fast_output = DepthwiseLinear(
+                config.num_codebooks, config.fast_dim, config.codebook_size
             )
         else:
-            self.fast_freqs_cis = None
+            self.fast_output = nn.Linear(
+                config.fast_dim,
+                config.codebook_size,
+                bias=False,
+            )
+
+        self.register_buffer(
+            "fast_freqs_cis",
+            precompute_freqs_cis(
+                config.num_codebooks,
+                config.fast_dim // config.fast_n_head,
+                config.rope_base,
+            ),
+            persistent=False,
+        )
 
         self.apply(self._init_weights)
 
@@ -428,13 +426,6 @@ class RQTransformer(BaseTransformer):
         x_bs, x_len = x.size(0), x.size(1)
         indices = torch.arange(x_bs, device=x.device)[~codebook_mask]
         x = torch.index_select(x, 0, indices)
-
-        if self.fast_wpe is not None:
-            assert x_len <= self.config.num_codebooks
-            pos_embs = self.fast_wpe(
-                torch.arange(0, self.config.num_codebooks).to(x.device)
-            )
-            x += pos_embs
 
         for layer in self.fast_layers:
             if self.config.use_gradient_checkpointing and self.training:
@@ -490,7 +481,7 @@ class TransformerBlock(nn.Module):
     ) -> None:
         super().__init__()
         self.attention = Attention(config, is_fast=is_fast, use_sdpa=use_sdpa)
-        self.feed_forward = FeedForward(config, is_fast=False)
+        self.feed_forward = FeedForward(config)
         self.ffn_norm = RMSNorm(config.dim, config.norm_eps)
         self.attention_norm = RMSNorm(config.dim, config.norm_eps)
 
@@ -518,9 +509,7 @@ class Attention(nn.Module):
         self.wqkv = nn.Linear(
             config.dim, total_head_dim, bias=config.attention_qkv_bias
         )
-        # self.wqkv = DepthwiseLinear(config.num_codebooks, config.dim, total_head_dim)
         self.wo = nn.Linear(config.dim, config.dim, bias=False)
-        # self.wo = DepthwiseLinear(config.num_codebooks, config.dim, config.dim)
         self.kv_cache = None
 
         self.dropout = config.dropout
@@ -555,9 +544,8 @@ class Attention(nn.Module):
         k = k.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         v = v.view(bsz, seqlen, self.n_local_heads, self.head_dim)
 
-        if not self.is_fast and freqs_cis is not None:
-            q = apply_rotary_emb(q, freqs_cis)
-            k = apply_rotary_emb(k, freqs_cis)
+        q = apply_rotary_emb(q, freqs_cis)
+        k = apply_rotary_emb(k, freqs_cis)
 
         q, k, v = map(lambda x: x.transpose(1, 2), (q, k, v))
 
@@ -580,22 +568,11 @@ class Attention(nn.Module):
 
 @torch.compile
 class FeedForward(nn.Module):
-    def __init__(self, config: BaseModelArgs, is_fast: bool = False) -> None:
+    def __init__(self, config: BaseModelArgs) -> None:
         super().__init__()
-        if is_fast:
-            self.w1 = DepthwiseLinear(
-                config.num_codebooks, config.dim, config.intermediate_size
-            )
-            self.w3 = DepthwiseLinear(
-                config.num_codebooks, config.dim, config.intermediate_size
-            )
-            self.w2 = DepthwiseLinear(
-                config.num_codebooks, config.intermediate_size, config.dim
-            )
-        else:
-            self.w1 = nn.Linear(config.dim, config.intermediate_size, bias=False)
-            self.w3 = nn.Linear(config.dim, config.intermediate_size, bias=False)
-            self.w2 = nn.Linear(config.intermediate_size, config.dim, bias=False)
+        self.w1 = nn.Linear(config.dim, config.intermediate_size, bias=False)
+        self.w3 = nn.Linear(config.dim, config.intermediate_size, bias=False)
+        self.w2 = nn.Linear(config.intermediate_size, config.dim, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
