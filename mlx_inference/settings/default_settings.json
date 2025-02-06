@@ -1,5 +1,5 @@
 {
-    "checkpoint_dir": "../inits/smoltts_byte_small",
+    "checkpoint_dir": "../inits/kokoro_v1/smoltts_byte_150m",
     "generation": {
         "default_temp": 0.0,
         "default_fast_temp": 0.5,

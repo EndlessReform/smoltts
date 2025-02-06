@@ -1,8 +1,9 @@
 import dataclasses
 import json
 from dataclasses import dataclass
+import math
 from pathlib import Path
-from typing import Optional, Literal, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -73,7 +74,7 @@ class BaseModelArgs:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        cls = DualARModelArgs
+        cls = RQTransformerModelArgs
 
         return cls(**data)
 
@@ -83,7 +84,7 @@ class BaseModelArgs:
 
 
 @dataclass
-class DualARModelArgs(BaseModelArgs):
+class RQTransformerModelArgs(BaseModelArgs):
     model_type: str = "dual_ar"
     fast_dim: int = 1024
     n_fast_layer: int = 4
@@ -92,7 +93,8 @@ class DualARModelArgs(BaseModelArgs):
     fast_head_dim: Optional[int] = None
     fast_intermediate_size: Optional[int] = None
     fast_attention_qkv_bias: Optional[bool] = None
-    fast_positional_embedding: Optional[Literal["absolute", "rope"]] = "rope"
+    depthwise_wte: Optional[bool] = False
+    depthwise_output: Optional[bool] = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -208,14 +210,6 @@ class BaseTransformer(nn.Module):
         vq_embeds = self.codebook_embeddings(x[:, 1:, :] + self.semantic_offset)
         vq_embeds_sum = vq_embeds.sum(dim=1)
 
-        # Mask summed embeddings where we don't have semantic tokens
-        # vq_embeds_sum[~torch.isin(x[:, 0], self.semantic_token_tensor)] = 0
-        # vq_embeds_sum[
-        #     ~(
-        #         (x[:, 0] >= self.semantic_token_start)
-        #         & (x[:, 0] <= self.semantic_token_end)
-        #     )
-        # ] = 0
         vq_embeds_sum[x[:, 1] == 0] = 0
 
         return text_embeds + vq_embeds_sum
@@ -287,7 +281,7 @@ class BaseTransformer(nn.Module):
             config.rope_base = rope_base
             print(f"Override rope_base to {rope_base}")
 
-        model_cls = DualARTransformer
+        model_cls = RQTransformer
 
         tokenizer = AutoTokenizer.from_pretrained(str(path))
 
@@ -329,8 +323,10 @@ class BaseTransformer(nn.Module):
         self.tokenizer.save_pretrained(path)
 
 
-class DualARTransformer(BaseTransformer):
-    def __init__(self, config: DualARModelArgs, tokenizer: AutoTokenizer) -> None:
+class RQTransformer(BaseTransformer):
+    def __init__(
+        self, config: RQTransformerModelArgs, tokenizer: AutoTokenizer
+    ) -> None:
         super().__init__(config, init_weights=False, tokenizer=tokenizer)
 
         # Project to fast dim if needed
@@ -340,13 +336,12 @@ class DualARTransformer(BaseTransformer):
             self.fast_project_in = nn.Identity()
 
         # Fast transformer
-        self.fast_embeddings = nn.Embedding(
-            config.codebook_size * (config.num_codebooks - 1), config.fast_dim
+        fast_emb_input_dim = (
+            config.codebook_size * (config.num_codebooks - 1)
+            if config.depthwise_wte
+            else config.codebook_size
         )
-        if config.fast_positional_embedding == "absolute":
-            self.fast_wpe = nn.Embedding(config.num_codebooks, config.fast_dim)
-        else:
-            self.fast_wpe = None
+        self.fast_embeddings = nn.Embedding(fast_emb_input_dim, config.fast_dim)
 
         offset = torch.arange(
             0,
@@ -371,24 +366,26 @@ class DualARTransformer(BaseTransformer):
             for _ in range(config.n_fast_layer)
         )
         self.fast_norm = RMSNorm(config.fast_dim, eps=config.norm_eps)
-        self.fast_output = nn.Linear(
-            config.fast_dim,
-            config.codebook_size,
-            bias=False,
-        )
-
-        if config.fast_positional_embedding == "rope":
-            self.register_buffer(
-                "fast_freqs_cis",
-                precompute_freqs_cis(
-                    config.num_codebooks,
-                    config.fast_dim // config.fast_n_head,
-                    config.rope_base,
-                ),
-                persistent=False,
+        if config.depthwise_output:
+            self.fast_output = DepthwiseLinear(
+                config.num_codebooks, config.fast_dim, config.codebook_size
             )
         else:
-            self.fast_freqs_cis = None
+            self.fast_output = nn.Linear(
+                config.fast_dim,
+                config.codebook_size,
+                bias=False,
+            )
+
+        self.register_buffer(
+            "fast_freqs_cis",
+            precompute_freqs_cis(
+                config.num_codebooks,
+                config.fast_dim // config.fast_n_head,
+                config.rope_base,
+            ),
+            persistent=False,
+        )
 
         self.apply(self._init_weights)
 
@@ -429,13 +426,6 @@ class DualARTransformer(BaseTransformer):
         x_bs, x_len = x.size(0), x.size(1)
         indices = torch.arange(x_bs, device=x.device)[~codebook_mask]
         x = torch.index_select(x, 0, indices)
-
-        if self.fast_wpe is not None:
-            assert x_len <= self.config.num_codebooks
-            pos_embs = self.fast_wpe(
-                torch.arange(0, self.config.num_codebooks).to(x.device)
-            )
-            x += pos_embs
 
         for layer in self.fast_layers:
             if self.config.use_gradient_checkpointing and self.training:
@@ -554,9 +544,8 @@ class Attention(nn.Module):
         k = k.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         v = v.view(bsz, seqlen, self.n_local_heads, self.head_dim)
 
-        if not self.is_fast and freqs_cis is not None:
-            q = apply_rotary_emb(q, freqs_cis)
-            k = apply_rotary_emb(k, freqs_cis)
+        q = apply_rotary_emb(q, freqs_cis)
+        k = apply_rotary_emb(k, freqs_cis)
 
         q, k, v = map(lambda x: x.transpose(1, 2), (q, k, v))
 
@@ -587,6 +576,22 @@ class FeedForward(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
+
+
+class DepthwiseLinear(nn.Module):
+    def __init__(self, num_positions: int, in_features: int, out_features: int):
+        super().__init__()
+
+        weight = torch.Tensor(num_positions, in_features, out_features)
+        nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+        self.num_positions = num_positions
+        self.weight = nn.Parameter(weight)
+
+    def forward(self, x):
+        """
+        Expects bsz, num_positions, hidden_dim
+        """
+        return torch.einsum("ijm,jmk->ijk", x, self.weight)
 
 
 class RMSNorm(nn.Module):

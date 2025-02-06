@@ -4,7 +4,7 @@ from tokenizers import Tokenizer
 from typing import Optional
 
 from mlx_inference.lm.config import ModelType
-from mlx_inference.lm.dual_ar import DualARTransformer
+from mlx_inference.lm.rq_transformer import RQTransformer
 
 
 class PromptEncoder:
@@ -20,7 +20,7 @@ class PromptEncoder:
         self.num_codebooks = num_codebooks
 
     @classmethod
-    def from_model(cls, tokenizer: Tokenizer, model: DualARTransformer):
+    def from_model(cls, tokenizer: Tokenizer, model: RQTransformer):
         return cls(
             tokenizer,
             num_codebooks=model.config.num_codebooks,

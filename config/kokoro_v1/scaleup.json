@@ -5,7 +5,7 @@
     "dataset_path": "../datasets/byte-tokenized-pg-kokoro_v1",
     "model_path": "pretrained_model",
     "batch_size": 22,
-    "max_epochs": 3,
+    "max_epochs": 2,
     "num_workers": 4,
     "gradient_clip": 1.0,
     "learning_rate": 3e-4,

@@ -4,7 +4,11 @@ from pathlib import Path
 import time
 from tokenizers import Tokenizer
 
-from mlx_inference.lm.dual_ar import DualARModelArgs, DualARTransformer, TokenConfig
+from mlx_inference.lm.rq_transformer import (
+    RQTransformerModelArgs,
+    RQTransformer,
+    TokenConfig,
+)
 from mlx_inference.lm.config import ModelType
 from mlx_inference.lm.generate import SingleBatchGenerator
 from mlx_inference.lm.utils.prompt import PromptEncoder
@@ -23,13 +27,13 @@ def main():
     model_type = ModelType(family="dual_ar", version=None, codec="mimi")
 
     load_start_time = time.time()
-    config = DualARModelArgs.from_json_file(str(checkpoint_dir / "config.json"))
+    config = RQTransformerModelArgs.from_json_file(str(checkpoint_dir / "config.json"))
     tokenizer = Tokenizer.from_file(str(checkpoint_dir / "tokenizer.json"))
     token_config = TokenConfig.from_tokenizer(
         model=model_type, tokenizer=tokenizer, config=config
     )
 
-    model = DualARTransformer(config, token_config, model_type)
+    model = RQTransformer(config, token_config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
     model.load_weights(model_path, strict=True)
     # model = model.apply(lambda p: p.astype(mx.float32))

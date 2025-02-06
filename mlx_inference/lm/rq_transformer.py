@@ -2,12 +2,12 @@ import mlx.core as mx
 import mlx.nn as nn
 from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
-from typing import Any, Optional, List, Literal, Tuple
+from typing import Any, Optional, List, Tuple
 
 from mlx_inference.lm.config import ModelType
 
 
-class DualARModelArgs(BaseModel):
+class RQTransformerModelArgs(BaseModel):
     model_type: str
 
     # Base transformer trunk
@@ -35,17 +35,14 @@ class DualARModelArgs(BaseModel):
     fast_head_dim: int
     fast_intermediate_size: int
     fast_attention_qkv_bias: bool = False
-    fast_wte_embedding: Literal["flattened", "full"] = Field(default="flattened")
-    """
-    Flattened: Fish Speech default (indices are shared across RVQ levels), "full": RVQ is treated like main codebook
-    """
-    fast_positional_embedding: Literal["rope", "absolute"] = Field(default="rope")
+    depthwise_wte: Optional[bool] = Field(default=None)
+    depthwise_output: Optional[bool] = Field(default=None)
 
     # meta
     use_gradient_checkpointing: bool = False
 
     @classmethod
-    def from_json_file(cls, file_path: str) -> "DualARModelArgs":
+    def from_json_file(cls, file_path: str) -> "RQTransformerModelArgs":
         with open(file_path, "r") as f:
             return cls.model_validate_json(f.read())
 
@@ -58,7 +55,7 @@ class TokenConfig(BaseModel):
 
     @classmethod
     def from_tokenizer(
-        cls, model: ModelType, tokenizer: Tokenizer, config: DualARModelArgs
+        cls, model: ModelType, tokenizer: Tokenizer, config: RQTransformerModelArgs
     ):
         im_end = tokenizer.token_to_id("<|im_end|>")
         if im_end is None:
@@ -91,9 +88,12 @@ class TokenConfig(BaseModel):
         )
 
 
-class DualARTransformer(nn.Module):
+class RQTransformer(nn.Module):
     def __init__(
-        self, config: DualARModelArgs, token_config: TokenConfig, model_type: ModelType
+        self,
+        config: RQTransformerModelArgs,
+        token_config: TokenConfig,
+        model_type: ModelType,
     ):
         self.config = config
         self.token_config = token_config
@@ -115,23 +115,28 @@ class DualARTransformer(nn.Module):
         else:
             self.fast_project_in = nn.Identity()
 
-        if config.fast_wte_embedding == "full":
+        fast_embedding_input_dim = (
+            config.codebook_size * (config.num_codebooks - 1)
+            if config.depthwise_wte
+            else config.codebook_size
+        )
+        if config.depthwise_wte:
             self.fast_embeddings = nn.Embedding(
-                config.codebook_size * (config.num_codebooks - 1), config.fast_dim
+                fast_embedding_input_dim, config.fast_dim
             )
         else:
             self.fast_embeddings = nn.Embedding(config.codebook_size, config.fast_dim)
-
-        if config.fast_positional_embedding == "absolute":
-            self.fast_wpe = nn.Embedding(config.num_codebooks, config.fast_dim)
-        else:
-            self.fast_wpe = None
 
         self.fast_layers = [
             TransformerBlock(config, is_fast=True) for _ in range(config.n_fast_layer)
         ]
         self.fast_norm = nn.RMSNorm(config.fast_dim, eps=config.norm_eps)
-        self.fast_output = nn.Linear(config.fast_dim, config.codebook_size, bias=False)
+        fast_output_dim = (
+            config.codebook_size * config.num_codebooks
+            if config.depthwise_output
+            else config.codebook_size
+        )
+        self.fast_output = nn.Linear(config.fast_dim, fast_output_dim, bias=False)
 
     def embed(self, x: mx.array) -> mx.array:
         semantic_tokens = x[:, 0, :]
@@ -182,16 +187,13 @@ class DualARTransformer(nn.Module):
     def forward_generate_fast(
         self,
         x: mx.array,
+        input_pos: int,
         cache: Optional[List[Any]] = None,
-        input_pos: Optional[int] = 0,
     ) -> mx.array:
         """
         Assumes (bsz, seqlen=1, fast_dim)
         """
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
-        if self.fast_wpe is not None:
-            pos_emb = self.fast_wpe(mx.array([input_pos], dtype=mx.uint32))
-            x += pos_emb
 
         for layer, layer_cache in zip(
             self.fast_layers, cache or [None] * len(self.fast_layers)
@@ -199,11 +201,20 @@ class DualARTransformer(nn.Module):
             x = layer(x, mask=mask, cache=layer_cache)
 
         fast_out = self.fast_norm(x)
-        return self.fast_output(fast_out)
+        if self.config.depthwise_output:
+            out_proj = self.fast_output.weight[
+                input_pos * self.config.codebook_size : (input_pos + 1)
+                * self.config.codebook_size,
+                :,
+            ]
+            return fast_out @ out_proj.T
+
+        else:
+            return self.fast_output(fast_out)
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, config: DualARModelArgs, is_fast: bool = False):
+    def __init__(self, config: RQTransformerModelArgs, is_fast: bool = False):
         super().__init__()
         self.attention = Attention(config, is_fast)
         self.feed_forward = MLP(config)
@@ -219,17 +230,14 @@ class TransformerBlock(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, config: DualARModelArgs, is_fast: bool = False):
+    def __init__(self, config: RQTransformerModelArgs, is_fast: bool = False):
         super().__init__()
         # GQA: groups split hidden dim evenly between them
         assert config.dim % config.n_head == 0
 
-        if config.fast_positional_embedding == "rope" or not is_fast:
-            self.rope = nn.RoPE(
-                int(config.dim / config.n_head), traditional=True, base=config.rope_base
-            )
-        else:
-            self.rope = None
+        self.rope = nn.RoPE(
+            int(config.dim / config.n_head), traditional=True, base=config.rope_base
+        )
 
         total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
         self.wqkv = nn.Linear(
@@ -283,7 +291,7 @@ class Attention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, config: DualARModelArgs) -> None:
+    def __init__(self, config: RQTransformerModelArgs) -> None:
         super().__init__()
 
         self.w1 = nn.Linear(config.dim, config.intermediate_size, bias=False)
