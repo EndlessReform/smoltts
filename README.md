@@ -38,6 +38,8 @@ For convenience, we serialize popular open TTS benchmark datasets in Mimi, to di
 Unfortunately, HuggingFace Datasets using audio columns require librosa, which has a hard Python 3.9 dependency for inexplicable reasons.
 If you are not creating a new dataset using raw audio instead of Mimi codes, please feel free to ignore this.
 
+Please use [uv](https://docs.astral.sh/uv/).
+
 ```bash
 # If you are not making new audio datasets, feel free to use a sane Python version instead
 uv sync
