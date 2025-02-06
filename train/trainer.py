@@ -8,7 +8,7 @@ from tqdm import tqdm
 from typing import List
 import wandb
 
-from dual_ar.model.rq_transformer import RQTransformer
+from modeling.model.rq_transformer import RQTransformer
 from train.config import TrainingConfig
 from train.data import collate_fn
 from train.state import TrainingState, CheckpointManager

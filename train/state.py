@@ -4,7 +4,7 @@ from typing import NamedTuple, Optional
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
-from dual_ar.model.rq_transformer import RQTransformer
+from modeling.model.rq_transformer import RQTransformer
 from train.config import TrainingConfig
 
 

@@ -1,5 +1,5 @@
 [project]
-name = "dual-ar"
+name = "smoltts"
 version = "0.1.0"
 description = "A repo for training DualAR speech models"
 readme = "README.md"
@@ -22,7 +22,7 @@ dependencies = [
 license = { file = "LICENSE" }
 
 [tool.setuptools]
-packages = ["data_pipeline", "dual_ar", "train", "mlx_inference"]
+packages = ["data_pipeline", "modeling", "train", "mlx_inference"]
 
 [tool.pyright]
 venvPath = "."
