@@ -19,6 +19,8 @@ class TTSCore:
         # TODO: Fix speaker cache
         if isinstance(voice, int):
             return voice
+        elif isinstance(voice, str) and voice.isnumeric():
+            return int(voice)
         return 0
 
     def generate_audio(
@@ -47,4 +49,7 @@ class TTSCore:
         end_time = time.time()
         print(f"Took {end_time - start_time:.2f}s to decode")
 
+        return pcm_data
+
+    def convert_pcm_to_wav(self, pcm_data):
         return pcm_to_wav_bytes(pcm_data)

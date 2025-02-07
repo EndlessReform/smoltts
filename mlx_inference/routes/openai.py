@@ -16,9 +16,10 @@ router = APIRouter(prefix="/v1", tags=["OpenAI"])
 @router.post("/audio/speech")
 async def openai_speech(item: SpeechRequest, http_request: Request):
     core = http_request.app.state.tts_core
-    wav_data = core.generate_audio(
+    pcm_data = core.generate_audio(
         input_text=item.input, voice=item.voice, response_format=item.response_format
     )
+    wav_data = core.convert_pcm_to_wav(pcm_data)
     return Response(
         wav_data,
         media_type="audio/wav",

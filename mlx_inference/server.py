@@ -10,7 +10,7 @@ import time
 from tokenizers import Tokenizer
 
 from mlx_inference.tts_core import TTSCore
-from mlx_inference.routes import openai
+from mlx_inference.routes import openai, elevenlabs
 from mlx_inference.lm.rq_transformer import (
     RQTransformerModelArgs,
     RQTransformer,
@@ -75,6 +75,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(openai.router)
+app.include_router(elevenlabs.router)
 
 
 if __name__ == "__main__":
