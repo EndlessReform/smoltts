@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
-from scipy import signal
-import soundfile as sf
-import io
 
 router = APIRouter(prefix="/v1", tags=["ElevenLabs"])
 
@@ -23,52 +21,44 @@ async def text_to_speech_blocking(
     ),
 ):
     core = http_request.app.state.tts_core
-    float_pcm = core.generate_audio(
+    content, media_type = core.generate_audio(
         input_text=item.text,
-        voice=voice_id,  # or map to your internal speaker IDs
-        response_format="wav",
-    ).flatten()
-
-    output_format = output_format if output_format is not None else "pcm_24000"
-    sample_rate = int(output_format.split("_")[1])
-    if sample_rate != 24000:
-        num_samples = int(len(float_pcm) * sample_rate / 24000)
-        float_pcm = signal.resample(float_pcm, num_samples)
-    mem_buf = io.BytesIO()
-    sf.write(mem_buf, float_pcm, sample_rate, format="raw", subtype="PCM_16")
-
-    if output_format.startswith("pcm_"):
-        # Extract sample rate from format string
-        # Resample if needed
-        content = bytes(mem_buf.getbuffer())
-        media_type = "audio/x-pcm"
-
-    elif output_format.startswith("mp3_"):
-        from pydub import AudioSegment
-
-        # Now create AudioSegment from the properly converted PCM
-        audio = AudioSegment(
-            data=bytes(mem_buf.getbuffer()),
-            sample_width=2,
-            frame_rate=sample_rate,
-            channels=1,
-        )
-
-        # Export to MP3
-        out_buf = io.BytesIO()
-        audio.export(out_buf, format="mp3", bitrate=output_format.split("_")[-1] + "k")
-        content = out_buf.getvalue()
-        media_type = "audio/mpeg"
-
-    else:
-        # TODO
-        raise NotImplementedError(f"Format {output_format} not yet supported")
+        voice=voice_id,
+        response_format=output_format,
+    )
 
     return Response(
         content=content,
         media_type=media_type,  # or audio/l16 for 16-bit PCM
         headers={
             "Content-Disposition": f'attachment; filename="elevenlabs_speech.{output_format.split("_")[0]}"',
-            "X-Sample-Rate": str(sample_rate),
+            "X-Sample-Rate": output_format.split("_")[1]
+            if output_format is not None
+            else "24000",
+        },
+    )
+
+
+@router.post("/text-to-speech/{voice_id}/stream")
+async def stream_tts(
+    voice_id: str,
+    item: CreateSpeechRequest,
+    http_request: Request,
+    output_format: str = "mp3_32",
+):
+    core = http_request.app.state.tts_core
+
+    def generate():
+        for audio_chunk, _ in core.stream_audio(
+            item.text, voice=voice_id, output_format=output_format
+        ):
+            yield audio_chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type="audio/mpeg" if output_format.startswith("mp3_") else "audio/x-pcm",
+        headers={
+            "Content-Disposition": f'attachment; filename="speech.{output_format.split("_")[0]}"',
+            "X-Sample-Rate": output_format.split("_")[1],
         },
     )
