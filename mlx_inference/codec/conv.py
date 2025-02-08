@@ -122,6 +122,12 @@ class MimiConvTranspose1d(nn.Module):
         return x
 
 
+class MeaninglessConvPassthrough(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int):
+        super().__init__()
+        self.weight = mx.zeros([in_channels, out_channels, kernel_size])
+
+
 class GroupedConvTranspose1d(nn.Module):
     def __init__(
         self,
@@ -131,12 +137,17 @@ class GroupedConvTranspose1d(nn.Module):
         kernel_size: int,
         stride: int = 1,
         groups: int = 1,
-        bias=True,
+        bias=False,
     ):
         super().__init__()
         self.trim_right_ratio = config.trim_right_ratio
-        self.conv_weight = mx.zeros([in_channels, out_channels, kernel_size])
-
+        # For depthwise/grouped conv where groups == channels:
+        channels_per_group = in_channels // groups
+        self.conv = MeaninglessConvPassthrough(
+            in_channels,
+            channels_per_group,  # This becomes 1 when groups == in_channels
+            kernel_size,
+        )
         padding_total = kernel_size - stride
         self.padding_right = math.ceil(padding_total * self.trim_right_ratio)
         self.padding_left = padding_total - self.padding_right
@@ -145,7 +156,7 @@ class GroupedConvTranspose1d(nn.Module):
     def __call__(self, x: mx.array):
         x = mx.conv_general(
             x,
-            self.conv_weight,
+            self.conv.weight,
             padding=(self.padding_left, self.padding_right),
             groups=self.groups,
             flip=False,

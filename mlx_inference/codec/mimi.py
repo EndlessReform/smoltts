@@ -28,6 +28,7 @@ def get_encodec_frame_rate(config: MimiConfig):
 
 class MimiModel(nn.Module):
     def __init__(self, config: MimiConfig):
+        super().__init__()  # Add this line
         self.config = config
 
         self.encoder = MimiEncoder(config.seanet)

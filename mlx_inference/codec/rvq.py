@@ -28,19 +28,20 @@ class MimiEuclideanCodebook(nn.Module):
         self.embed_sum = mx.zeros([config.codebook_size, config.codebook_dim])
         self.codebook_size = config.codebook_size
         self.epsilon = epsilon
-        # Not doing initialized, it's true
+        # This does nothing at inference, but we need it so the keys line up
+        self.initialized = mx.array([True], dtype=mx.float32)
         self.cluster_usage = mx.ones(config.codebook_size)
-        self.freeze(keys=["embed_sum", "cluster_usage"])
-        self.embed = (self.embed_sum / mx.maximum(self.cluster_usage, self.epsilon))[
-            :, mx.newaxis
-        ]
+        # self.freeze(keys=["embed_sum", "cluster_usage"])
+        self.embed_sum = (
+            self.embed_sum / mx.maximum(self.cluster_usage, self.epsilon)[:, mx.newaxis]
+        )
 
     def decode(self, embed_ind) -> mx.array:
-        quantize = self.embed[embed_ind]
+        quantize = self.embed_sum[embed_ind]
         return quantize
 
     def quantize(self, x: mx.array) -> mx.array:
-        dists = cdist(x[:, mx.newaxis], self.embed[:, mx.newaxis])[0]
+        dists = cdist(x[:, mx.newaxis], self.embed_sum[:, mx.newaxis])[0]
         embed_ind = dists.argmin(dim=-1)
         return embed_ind
 

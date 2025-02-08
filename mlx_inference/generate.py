@@ -11,7 +11,6 @@ from mlx_inference.lm.rq_transformer import (
 )
 from mlx_inference.lm.config import ModelType
 from mlx_inference.lm.generate import SingleBatchGenerator
-from mlx_inference.lm.utils.prompt import PromptEncoder
 
 parser = argparse.ArgumentParser(
     description="A simple one-off CLI generator for DualAR models"
