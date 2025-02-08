@@ -69,10 +69,11 @@ class TTSCore:
 
         try:
             for token in tqdm(token_gen):
-                np_tokens = np.array(token.vq_tensor).astype(np.uint32)
+                np_tokens = np.array(token.vq_tensor).astype(np.uint32)[:, 1:, :]
+                # print(f"Shape: {np_tokens.shape}")
                 pcm_chunk = self.mimi_tokenizer.decode_step(np_tokens)
                 if pcm_chunk is not None:
-                    audio_data, _ = self.format_audio_chunk(pcm_chunk, output_format)
+                    audio_data = self.format_audio_chunk(pcm_chunk, output_format)
 
                     yield audio_data
 
@@ -85,11 +86,12 @@ class TTSCore:
         """Format a chunk of PCM data into the requested format.
         Returns (formatted_bytes, media_type)"""
         sample_rate = int(output_format.split("_")[1])
+        pcm_data = pcm_data.flatten()
 
         # Resample if needed
         if sample_rate != 24000:
-            num_samples = int(len(pcm_data.flatten()) * sample_rate / 24000)
-            pcm_data = signal.resample(pcm_data.flatten(), num_samples)
+            num_samples = int(len(pcm_data) * sample_rate / 24000)
+            pcm_data = signal.resample(pcm_data, num_samples)
 
         # Convert to 16-bit PCM first
         mem_buf = io.BytesIO()
