@@ -272,16 +272,14 @@ class Attention(nn.Module):
 
         q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
         if cache is not None:
-            if self.rope is not None:
-                q = self.rope(q, offset=cache.offset)
-                k = self.rope(k, offset=cache.offset)
+            q = self.rope(q, offset=cache.offset)
+            k = self.rope(k, offset=cache.offset)
             k, v = cache.update_and_fetch(k, v)
 
         else:
-            q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
-            if self.rope is not None:
-                q = self.rope(q)
-                k = self.rope(k)
+            # q, k, v = map(lambda x: x.transpose(0, 2, 1, 3), (q, k, v))
+            q = self.rope(q)
+            k = self.rope(k)
 
         output = mx.fast.scaled_dot_product_attention(
             q=q, k=k, v=v, scale=self.scale, mask=mask
