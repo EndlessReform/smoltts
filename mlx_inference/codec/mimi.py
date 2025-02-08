@@ -1,0 +1,82 @@
+import math
+import mlx.core as mx
+import mlx.nn as nn
+import numpy as np
+from pydantic import BaseModel
+from typing import Any, List, Optional
+
+from mlx_inference.codec.rvq import RVQConfig, MimiSplitResidualVectorQuantizer
+from mlx_inference.codec.conv import (
+    SeanetConfig,
+    MimiConv1d,
+    GroupedConvTranspose1d,
+)
+from mlx_inference.codec.seanet import MimiEncoder, MimiDecoder
+from mlx_inference.codec.transformer import MimiTransformerConfig, MimiTransformer
+
+
+class MimiConfig(BaseModel):
+    seanet: SeanetConfig
+    transformer: MimiTransformerConfig
+    rvq: RVQConfig
+
+
+def get_encodec_frame_rate(config: MimiConfig):
+    hop_length = np.prod(config.seanet.ratios)
+    return math.ceil(config.seanet.sampling_rate / hop_length)
+
+
+class MimiModel(nn.Module):
+    def __init__(self, config: MimiConfig):
+        self.config = config
+
+        self.encoder = MimiEncoder(config.seanet)
+        self.encoder_transformer = MimiTransformer(config.transformer)
+        encodec_frame_rate = get_encodec_frame_rate(config)
+
+        self.downsample = MimiConv1d(
+            config.seanet,
+            config.seanet.dimension,
+            config.seanet.dimension,
+            kernel_size=2 * int(encodec_frame_rate / config.rvq.frame_rate),
+            stride=2,
+            bias=False,
+            pad_mode="replicate",
+        )
+        self.upsample = GroupedConvTranspose1d(
+            config.seanet,
+            config.seanet.dimension,
+            config.seanet.dimension,
+            kernel_size=2 * int(encodec_frame_rate / config.rvq.frame_rate),
+            stride=2,
+            bias=False,
+            groups=512,
+        )
+
+        self.decoder_transformer = MimiTransformer(config.transformer)
+        self.decoder = MimiDecoder(config.seanet)
+
+        self.quantizer = MimiSplitResidualVectorQuantizer(config.rvq)
+
+    def _decode_frame(self, codes: mx.array, cache: Optional[List[Any]]) -> mx.array:
+        embeddings = self.quantizer.decode(codes)
+        embeddings = self.upsample(embeddings)
+        decoder_outputs = self.decoder_transformer(
+            embeddings.transpose(1, 2), cache=cache
+        )
+        embeddings = decoder_outputs[0].transpose(1, 2)
+        outputs = self.decoder(embeddings)
+        return outputs
+
+    def decode(
+        self,
+        audio_codes: mx.array,
+        cache: Optional[List[Any]] = None,
+        padding_mask: Optional[mx.array] = None,
+    ):
+        audio_values = self._decode_frame(audio_codes, cache)
+
+        if padding_mask is not None and padding_mask.shape[-1] < audio_values.shape[-1]:
+            audio_values = audio_values[:, :, : padding_mask.shape[-1]]
+
+        return audio_values

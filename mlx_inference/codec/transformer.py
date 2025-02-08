@@ -130,7 +130,7 @@ class MimiTransformerLayer(nn.Module):
         return h
 
 
-class MimiTransformerModule(nn.Module):
+class MimiTransformer(nn.Module):
     def __init__(self, config: MimiTransformerConfig):
         super().__init__()
         self.layers = [MimiTransformerLayer(config) for _ in range(config.num_layers)]
