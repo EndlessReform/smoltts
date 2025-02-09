@@ -27,19 +27,42 @@ class SeanetConfig(BaseModel):
 def causal_pad1d(
     x: mx.array, paddings: Tuple[int, int], mode: str = "zero", value: float = 0.0
 ) -> mx.array:
-    length = x.shape[-1]
-    padding_left, padding_right = paddings
-    if not mode == "reflect":
-        return mx.pad(x, paddings, mode, value)
+    if x.ndim < 2:
+        raise ValueError(
+            "Input tensor must have at least 2 dimensions (seq_len, channels)."
+        )
 
+    padding_left, padding_right = paddings
+
+    # Create a padding tuple that pads only the second-to-last dimension (seqlen)
+    pad_tuple = [(0, 0)] * x.ndim
+    pad_tuple[-2] = (padding_left, padding_right)
+    pad_tuple = tuple(pad_tuple)
+
+    if mode != "reflect":
+        return mx.pad(x, pad_tuple, mode, value)
+
+    # Handle reflect mode with possible extra padding
+    length = x.shape[-2]
     max_pad = max(padding_left, padding_right)
     extra_pad = 0
+
     if length <= max_pad:
         extra_pad = max_pad - length + 1
-        x = mx.pad(x, (0, extra_pad))
-    padded = mx.pad(x, paddings, mode, value)
-    end = padded.shape[-1] - extra_pad
-    return padded[:, :end]
+        # Apply extra padding to the seqlen dimension
+        x_pad = [(0, 0)] * x.ndim
+        x_pad[-2] = (0, extra_pad)
+        x = mx.pad(x, tuple(x_pad), "constant")
+
+    padded = mx.pad(x, pad_tuple, mode, value)
+
+    if extra_pad > 0:
+        # Slice to remove the extra padding added for reflection
+        slices = [slice(None)] * x.ndim
+        slices[-2] = slice(None, padded.shape[-2] - extra_pad)
+        padded = padded[tuple(slices)]
+
+    return padded
 
 
 class MimiConv1d(nn.Module):
@@ -76,7 +99,7 @@ class MimiConv1d(nn.Module):
         self.padding_left = self.padding_total - self.padding_right
 
     def _get_extra_padding_for_conv1d(self, x: mx.array) -> int:
-        length = x.shape[-1]
+        length = x.shape[-2]  # Use the seqlen dimension
         n_frames = (length - self.kernel_size + self.padding_total) / self.stride + 1
         n_frames = math.ceil(n_frames) - 1
         ideal_length = n_frames * self.stride + self.kernel_size - self.padding_total
@@ -84,9 +107,15 @@ class MimiConv1d(nn.Module):
         return ideal_length - length
 
     def __call__(self, x: mx.array) -> mx.array:
+        print(f"CONV1D shape: {x.shape}")
         extra_padding = self._get_extra_padding_for_conv1d(x)
-        x = causal_pad1d(x, (self.padding_total, extra_padding), self.pad_mode)
+        x = causal_pad1d(
+            x, (self.padding_left, self.padding_right + extra_padding), self.pad_mode
+        )
+        print(f"CONV1D shape after padding: {x.shape}")
+        # Ensure the input is in the correct shape for Conv1d (channels last)
         x = self.conv(x)
+        print(f"CONV1D out shape: {x.shape}")
         return x
 
 
@@ -116,16 +145,19 @@ class MimiConvTranspose1d(nn.Module):
         self.padding_left = padding_total - self.padding_right
 
     def __call__(self, x: mx.array):
+        print(f"CONVTRANSPOSE1D padding: ({self.padding_left}, {self.padding_right})")
         x = self.conv(x)
-        end = x.shape[-1] - self.padding_right
-        x = x[:, self.padding_left : end]
+        print(f"CONVTRANSPOSE1D immediately after: {x.shape}")
+        end = x.shape[-2] - self.padding_right
+        x = x[:, self.padding_left : end, :]
+        print(f"CONVTRANSPOSE1D final shape: {x.shape}")
         return x
 
 
 class MeaninglessConvPassthrough(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int):
         super().__init__()
-        self.weight = mx.zeros([in_channels, out_channels, kernel_size])
+        self.weight = mx.zeros([in_channels, kernel_size, out_channels])
 
 
 class GroupedConvTranspose1d(nn.Module):
@@ -149,18 +181,27 @@ class GroupedConvTranspose1d(nn.Module):
             kernel_size,
         )
         padding_total = kernel_size - stride
+        print(f"PADDING TOTAL: {padding_total}")
+        # Due to the dilation
+        self.dilation_offset = kernel_size // 2
         self.padding_right = math.ceil(padding_total * self.trim_right_ratio)
-        self.padding_left = padding_total - self.padding_right
+        self.padding_left = (padding_total - self.padding_right) + self.dilation_offset
+        self.padding_right += self.dilation_offset
         self.groups = groups
 
     def __call__(self, x: mx.array):
+        print(
+            f"Transpose PADDING: Left {self.padding_left}, right {self.padding_right}"
+        )
         x = mx.conv_general(
             x,
             self.conv.weight,
-            padding=(self.padding_left, self.padding_right),
+            padding=([self.padding_left], [self.padding_right]),
             groups=self.groups,
-            flip=False,
+            input_dilation=2,
+            flip=True,
         )
-        end = x.shape[-1] - self.padding_right
-        x = x[:, self.padding_left : end]
+        print(f"IMMEDIATELY AFTER upsample conv: {x.shape}")
+        end = x.shape[-2] - (self.padding_right - self.dilation_offset)
+        x = x[:, (self.padding_left - self.dilation_offset) : end]
         return x

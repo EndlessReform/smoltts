@@ -107,12 +107,14 @@ class MimiResidualVectorQuantizer(nn.Module):
 
     def decode(self, codes: mx.array) -> mx.array:
         quantized_out = mx.array(0.0)
-        codes = codes.transpose(0, 1)
+        codes = mx.swapaxes(codes, 0, 1)
         for i, indices in enumerate(codes):
             layer = self.layers[i]
             quantized = layer.decode(indices)
             quantized_out = quantized_out + quantized
 
+        # (bsz, dim, seqlen) to dim first
+        quantized_out = mx.swapaxes(quantized_out, 1, 2)
         if self.output_proj is not None:
             quantized_out = self.output_proj(quantized_out)
 

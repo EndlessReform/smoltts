@@ -119,7 +119,7 @@ class MimiDecoder(nn.Module):
         ]
         self.layers = model
 
-    def forward(self, x: mx.array):
+    def __call__(self, x: mx.array):
         for layer in self.layers:
             x = layer(x)
         return x

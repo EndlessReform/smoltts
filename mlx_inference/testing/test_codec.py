@@ -1,5 +1,6 @@
 from huggingface_hub import hf_hub_download
 import mlx.core as mx
+import time
 
 from mlx_inference.codec.mimi import MimiConfig, MimiModel
 from mlx_inference.codec.conv import SeanetConfig
@@ -24,6 +25,9 @@ def main():
     # "helpfully" leaked that abstraction onto me.
     # But the convtrans1d is DIFFERENT yet again.
     # All hail Apple.
+    def is_upsample(key) -> bool:
+        return key == "upsample.conv.weight"
+
     def is_convtrans1d(key) -> bool:
         return (
             # Decoder only
@@ -39,8 +43,6 @@ def main():
     def is_conv1d(key):
         return (
             key.endswith(".conv.weight")
-            # Patched
-            and key != "upsample.conv.weight"
             # RVQ proj
             or "quantizer.input_proj" in key
             or "quantizer.output_proj" in key
@@ -54,18 +56,25 @@ def main():
         else v
         for k, v in state_dict.items()
     }
-    # print(converted_dict.keys())
-    # print(
-    #     "Dict structure:",
-    #     {k: converted_dict[k].shape for k in list(converted_dict.keys())[:5]},
-    # )
-    # print("Tree structure:", list(converted_dict.keys())[0].split("."))
     weight_list = [(k, v) for k, v in converted_dict.items()]
 
     model.load_weights(weight_list, strict=True)
     mx.eval(model.parameters())
     model.eval()
     print("Model loaded")
+    # Test that the forward pass even WORKS
+    test_input = mx.zeros([1, 8, 200], dtype=mx.int32)
+
+    start_time = time.time()
+
+    decoded = model.decode(test_input, None)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    print("Done")
+    print(f"Decoded shape: {decoded.shape}")
+    print(f"Elapsed time: {(elapsed_time * 1000):.3f} ms")
 
 
 if __name__ == "__main__":

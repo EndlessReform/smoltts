@@ -44,11 +44,12 @@ class MimiModel(nn.Module):
             bias=False,
             pad_mode="replicate",
         )
+        kernel_size = 2 * int(encodec_frame_rate / config.rvq.frame_rate)
         self.upsample = GroupedConvTranspose1d(
             config.seanet,
             config.seanet.dimension,
             config.seanet.dimension,
-            kernel_size=2 * int(encodec_frame_rate / config.rvq.frame_rate),
+            kernel_size=kernel_size,
             stride=2,
             bias=False,
             groups=512,
@@ -61,13 +62,16 @@ class MimiModel(nn.Module):
 
     def _decode_frame(self, codes: mx.array, cache: Optional[List[Any]]) -> mx.array:
         embeddings = self.quantizer.decode(codes)
+        print(f"Quantizer decode done; shape: {embeddings.shape}")
         embeddings = self.upsample(embeddings)
-        decoder_outputs = self.decoder_transformer(
-            embeddings.transpose(1, 2), cache=cache
-        )
-        embeddings = decoder_outputs[0].transpose(1, 2)
+        print(f"Upsample done; shape: {embeddings.shape}")
+        decoder_outputs = self.decoder_transformer(embeddings, cache=cache)
+        # embeddings = decoder_outputs[0].transpose(1, 2)
+        # embeddings = decoder_outputs[0]
+        embeddings = decoder_outputs
+        print(f"Transformer done; shape: {embeddings.shape}")
         outputs = self.decoder(embeddings)
-        return outputs
+        return mx.swapaxes(outputs, 1, 2)
 
     def decode(
         self,
