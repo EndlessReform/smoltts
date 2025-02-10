@@ -60,7 +60,7 @@ class MimiAttention(nn.Module):
         )
         self.rope = nn.RoPE(
             int(config.d_model / config.num_heads),
-            traditional=True,
+            traditional=False,
             base=config.rope_theta,
         )
 
@@ -125,7 +125,8 @@ class MimiTransformerLayer(nn.Module):
         h = residual + self.self_attn_layer_scale(hidden_states)
 
         residual = h
-        hidden_states = self.mlp(self.mlp_layer_scale(h))
+        hidden_states = self.post_attention_layernorm(h)
+        hidden_states = self.mlp(hidden_states)
         h = residual + self.mlp_layer_scale(hidden_states)
         return h
 
