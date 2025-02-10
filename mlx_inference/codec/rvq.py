@@ -32,12 +32,19 @@ class MimiEuclideanCodebook(nn.Module):
         self.initialized = mx.array([True], dtype=mx.float32)
         self.cluster_usage = mx.ones(config.codebook_size)
         # self.freeze(keys=["embed_sum", "cluster_usage"])
-        self.embed_sum = (
-            self.embed_sum / mx.maximum(self.cluster_usage, self.epsilon)[:, mx.newaxis]
-        )
+        self._embed = None
+
+    @property
+    def embed(self) -> mx.array:
+        if self._embed is None:
+            self._embed = (
+                self.embed_sum
+                / mx.maximum(self.cluster_usage, self.epsilon)[:, mx.newaxis]
+            )
+        return self._embed
 
     def decode(self, embed_ind) -> mx.array:
-        quantize = self.embed_sum[embed_ind]
+        quantize = self.embed[embed_ind, :]
         return quantize
 
     def quantize(self, x: mx.array) -> mx.array:

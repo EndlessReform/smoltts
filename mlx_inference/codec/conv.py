@@ -156,6 +156,9 @@ class MimiConvTranspose1d(nn.Module):
 
 class MeaninglessConvPassthrough(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int):
+        """
+        This is necessary to load in the weights without using the MLX nn wrapper
+        """
         super().__init__()
         self.weight = mx.zeros([in_channels, kernel_size, out_channels])
 
@@ -173,35 +176,42 @@ class GroupedConvTranspose1d(nn.Module):
     ):
         super().__init__()
         self.trim_right_ratio = config.trim_right_ratio
-        # For depthwise/grouped conv where groups == channels:
-        channels_per_group = in_channels // groups
+        channels_per_group = out_channels
         self.conv = MeaninglessConvPassthrough(
             in_channels,
-            channels_per_group,  # This becomes 1 when groups == in_channels
+            out_channels
+            // channels_per_group,  # This becomes 1 when groups == in_channels
             kernel_size,
         )
         padding_total = kernel_size - stride
-        print(f"PADDING TOTAL: {padding_total}")
         # Due to the dilation
-        self.dilation_offset = kernel_size // 2
         self.padding_right = math.ceil(padding_total * self.trim_right_ratio)
-        self.padding_left = (padding_total - self.padding_right) + self.dilation_offset
-        self.padding_right += self.dilation_offset
+        self.padding_left = padding_total - self.padding_right
         self.groups = groups
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.in_channels = in_channels
+        self._conv_weight = None
+
+    @property
+    def conv_weight(self):
+        if self._conv_weight is None:
+            # Torch collapses the groups on the OUTPUT, but MLX collapses on the INPUT
+            self._conv_weight = self.conv.weight.reshape(
+                self.groups, self.kernel_size, self.in_channels // self.groups
+            )
+        return self._conv_weight
 
     def __call__(self, x: mx.array):
-        print(
-            f"Transpose PADDING: Left {self.padding_left}, right {self.padding_right}"
-        )
-        x = mx.conv_general(
+        x = mx.conv_transpose1d(
             x,
-            self.conv.weight,
-            padding=([self.padding_left], [self.padding_right]),
+            self.conv_weight,
+            padding=0,
+            stride=self.stride,
             groups=self.groups,
-            input_dilation=2,
-            flip=True,
         )
-        print(f"IMMEDIATELY AFTER upsample conv: {x.shape}")
-        end = x.shape[-2] - (self.padding_right - self.dilation_offset)
-        x = x[:, (self.padding_left - self.dilation_offset) : end]
+
+        # print(f"IMMEDIATELY AFTER upsample conv: {x.shape}")
+        end = x.shape[-2] - self.padding_right
+        x = x[:, self.padding_left : end, :]
         return x

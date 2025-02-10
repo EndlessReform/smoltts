@@ -25,8 +25,6 @@ def main():
     # "helpfully" leaked that abstraction onto me.
     # But the convtrans1d is DIFFERENT yet again.
     # All hail Apple.
-    def is_upsample(key) -> bool:
-        return key == "upsample.conv.weight"
 
     def is_convtrans1d(key) -> bool:
         return (
@@ -46,6 +44,7 @@ def main():
             # RVQ proj
             or "quantizer.input_proj" in key
             or "quantizer.output_proj" in key
+            and key != "upsample.conv.weight"
         )
 
     converted_dict = {

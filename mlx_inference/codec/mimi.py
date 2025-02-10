@@ -63,8 +63,10 @@ class MimiModel(nn.Module):
     def _decode_frame(self, codes: mx.array, cache: Optional[List[Any]]) -> mx.array:
         embeddings = self.quantizer.decode(codes)
         print(f"Quantizer decode done; shape: {embeddings.shape}")
+        mx.save("dequantized_embeddings_mlx.npy", embeddings)
         embeddings = self.upsample(embeddings)
         print(f"Upsample done; shape: {embeddings.shape}")
+        mx.save("upsample_mlx.npy", mx.swapaxes(embeddings, 1, 2))
         decoder_outputs = self.decoder_transformer(embeddings, cache=cache)
         # embeddings = decoder_outputs[0].transpose(1, 2)
         # embeddings = decoder_outputs[0]
