@@ -50,14 +50,22 @@ class TTSCore:
         )
 
         # Convert to numpy and decode
-        tokens = np.array(gen).astype(np.uint32)
+        # tokens = np.array(gen).astype(np.uint32)
         start_time = time.time()
-        pcm_data = self.mimi_tokenizer.decode(tokens)
+        out = self.mimi_tokenizer.decode(gen)
+        mx.eval(out)
+        end_time = time.time()
+        print(f"Took {end_time - start_time:.2f}s to decode")
+        # print(f"Took {end_time - start_time:.2f}s to decode")
+
+        start_time = time.time()
+        pcm_data = np.array(out)
         audio_data, media_type = self.format_audio_chunk(
             pcm_data.flatten(), response_format
         )
         end_time = time.time()
-        print(f"Took {end_time - start_time:.2f}s to decode")
+        print(f"Took {end_time - start_time:.2f}s to transcode")
+        mx.metal.clear_cache()
 
         return audio_data, media_type
 

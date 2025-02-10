@@ -1,6 +1,7 @@
 import mlx.core as mx
 import mlx.nn as nn
 from typing import List
+import time
 
 from mlx_inference.codec.conv import SeanetConfig, MimiConv1d, MimiConvTranspose1d
 
@@ -121,6 +122,10 @@ class MimiDecoder(nn.Module):
         self.layers = model
 
     def __call__(self, x: mx.array):
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
+            # start_time = time.time()
             x = layer(x)
+            # mx.eval(x)
+            # end_time = time.time()
+            # print(f"{i}: {(end_time - start_time) * 1000:3f}ms")
         return x

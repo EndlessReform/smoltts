@@ -24,6 +24,7 @@ class SeanetConfig(BaseModel):
     upsample_groups: int = 512
 
 
+@mx.compile
 def causal_pad1d(
     x: mx.array, paddings: Tuple[int, int], mode: str = "zero", value: float = 0.0
 ) -> mx.array:
