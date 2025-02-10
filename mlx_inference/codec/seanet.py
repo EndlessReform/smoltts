@@ -25,9 +25,10 @@ class MimiResnetBlock(nn.Module):
         self.block = block
 
     def __call__(self, x: mx.array) -> mx.array:
+        residual = x
         for layer in self.block:
             x = layer(x)
-        return x
+        return residual + x
 
 
 class MimiEncoder(nn.Module):

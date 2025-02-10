@@ -36,11 +36,12 @@ def causal_pad1d(
 
     # Create a padding tuple that pads only the second-to-last dimension (seqlen)
     pad_tuple = [(0, 0)] * x.ndim
-    pad_tuple[-2] = (padding_left, padding_right)
+    pad_tuple[-2] = (padding_left + padding_right, 0)
     pad_tuple = tuple(pad_tuple)
 
     if mode != "reflect":
-        return mx.pad(x, pad_tuple, mode, value)
+        out = mx.pad(x, pad_tuple, mode, value)
+        return out
 
     # Handle reflect mode with possible extra padding
     length = x.shape[-2]
@@ -107,15 +108,11 @@ class MimiConv1d(nn.Module):
         return ideal_length - length
 
     def __call__(self, x: mx.array) -> mx.array:
-        print(f"CONV1D shape: {x.shape}")
         extra_padding = self._get_extra_padding_for_conv1d(x)
         x = causal_pad1d(
             x, (self.padding_left, self.padding_right + extra_padding), self.pad_mode
         )
-        print(f"CONV1D shape after padding: {x.shape}")
-        # Ensure the input is in the correct shape for Conv1d (channels last)
         x = self.conv(x)
-        print(f"CONV1D out shape: {x.shape}")
         return x
 
 
@@ -145,12 +142,9 @@ class MimiConvTranspose1d(nn.Module):
         self.padding_left = padding_total - self.padding_right
 
     def __call__(self, x: mx.array):
-        print(f"CONVTRANSPOSE1D padding: ({self.padding_left}, {self.padding_right})")
         x = self.conv(x)
-        print(f"CONVTRANSPOSE1D immediately after: {x.shape}")
         end = x.shape[-2] - self.padding_right
         x = x[:, self.padding_left : end, :]
-        print(f"CONVTRANSPOSE1D final shape: {x.shape}")
         return x
 
 
