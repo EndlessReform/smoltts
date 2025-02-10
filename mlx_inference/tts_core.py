@@ -8,8 +8,9 @@ import time
 from typing import Union
 from tqdm import tqdm
 
-from mlx_inference.lm.generate import generate_blocking, SingleBatchGenerator
 from mlx_inference.io.wav import pcm_to_wav_bytes
+from mlx_inference.lm.cache import make_prompt_cache, KVCache
+from mlx_inference.lm.generate import generate_blocking, SingleBatchGenerator
 
 
 class TTSCore:
@@ -74,19 +75,23 @@ class TTSCore:
         token_gen = SingleBatchGenerator(
             self.model, prompt, self.settings.generation, audio_only=True
         )
+        mimi_cache = make_prompt_cache(self.mimi_tokenizer.decoder_transformer)
 
-        try:
-            for token in tqdm(token_gen):
-                np_tokens = np.array(token.vq_tensor).astype(np.uint32)[:, 1:, :]
-                # print(f"Shape: {np_tokens.shape}")
-                pcm_chunk = self.mimi_tokenizer.decode_step(np_tokens)
-                if pcm_chunk is not None:
-                    audio_data = self.format_audio_chunk(pcm_chunk, output_format)
+        # TODO REMOVE THIS this is just for gut-check
+        all_pcm = []
 
-                    yield audio_data
+        for token in tqdm(token_gen):
+            audio_tokens = token.vq_tensor[:, 1:, :]
+            # print(f"Shape: {np_tokens.shape}")
+            pcm_chunk = self.mimi_tokenizer.decode(audio_tokens, mimi_cache)
+            if pcm_chunk is not None:
+                all_pcm.append(pcm_chunk)
+                # audio_data = self.format_audio_chunk(pcm_chunk, output_format)
 
-        finally:
-            self.mimi_tokenizer.reset()
+                # yield audio_data
+        print(all_pcm[0].shape)
+        pcm_chunk = np.array(mx.concat(all_pcm, axis=-1).flatten())
+        yield self.format_audio_chunk(pcm_chunk, output_format)
 
     def format_audio_chunk(
         self, pcm_data: np.ndarray, output_format: str = "pcm_24000"

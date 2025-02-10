@@ -5,7 +5,6 @@ import mlx.nn as nn
 import numpy as np
 from pydantic import BaseModel
 from typing import Any, List, Optional
-import time
 
 from mlx_inference.codec.rvq import RVQConfig, MimiSplitResidualVectorQuantizer
 from mlx_inference.codec.conv import (
@@ -63,7 +62,7 @@ class MimiModel(nn.Module):
         self.quantizer = MimiSplitResidualVectorQuantizer(config.rvq)
 
     def _decode_frame(self, codes: mx.array, cache: Optional[List[Any]]) -> mx.array:
-        start_time = time.time()
+        # start_time = time.time()
         embeddings = self.quantizer.decode(codes)
         embeddings = self.upsample(embeddings)
         decoder_outputs = self.decoder_transformer(embeddings, cache=cache)

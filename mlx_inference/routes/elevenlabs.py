@@ -56,7 +56,7 @@ async def stream_tts(
 
     return StreamingResponse(
         generate(),
-        media_type="audio/mpeg" if output_format.startswith("mp3_") else "audio/x-pcm",
+        media_type="audio/mpeg" if output_format.startswith("mp3_") else "audio/wav",
         headers={
             "Content-Disposition": f'attachment; filename="speech.{output_format.split("_")[0]}"',
             "X-Sample-Rate": output_format.split("_")[1],

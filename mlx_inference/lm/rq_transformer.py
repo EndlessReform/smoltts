@@ -301,18 +301,53 @@ class MLP(nn.Module):
 
 
 def create_attention_mask(h: mx.array, cache: Optional[Any] = None):
-    T = h.shape[1]
-    if T > 1:
-        offset = cache[0].offset if cache is not None and cache[0] is not None else 0
-        mask = _create_causal_mask(T, offset=offset)
-        mask = mask.astype(h.dtype)
-    else:
-        mask = None
-    return mask
+    """Creates an attention mask for the current decoding step.
+
+    Args:
+        h: Input tensor of shape [batch, seq_len, hidden_dim]
+        cache: Optional KV cache containing previous key/value pairs
+
+    Returns:
+        A causal mask tensor or None if only processing a single token
+    """
+    query_seq_len = h.shape[1]
+    if query_seq_len <= 1:
+        return None
+
+    # For history length, check the cache
+    history_len = cache[0].offset if cache is not None and cache[0] is not None else 0
+    total_seq_len = history_len + query_seq_len
+
+    # Create mask allowing each query position to only attend up to its position
+    # Shape will be [query_seq_len, total_seq_len]
+    mask = create_causal_mask(query_seq_len=query_seq_len, total_seq_len=total_seq_len)
+    return mask.astype(h.dtype)
 
 
-def _create_causal_mask(N: int, offset: int = 0):
-    """Creates a causal mask for attention."""
-    linds, rinds = mx.arange(offset + N), mx.arange(offset, offset + N)
-    mask = (linds[:, None] < rinds[None]) * -1e9
+def create_causal_mask(query_seq_len: int, total_seq_len: int) -> mx.array:
+    """Creates a causal mask for attention, explicitly handling the two-token case.
+
+    Args:
+        query_seq_len: Number of new query positions (typically 2 for two-token decoding)
+        total_seq_len: Total sequence length including history (history_len + query_seq_len)
+
+    Returns:
+        Mask tensor of shape [query_seq_len, total_seq_len] where -inf (as -1e9)
+        blocks attending to future positions
+
+    Example for query_seq_len=2, total_seq_len=4:
+        [[-inf, -inf,    0,    0],  # First query can attend to positions 2,3
+         [-inf, -inf, -inf,    0]]  # Second query can only attend to position 3
+    """
+    # Create position indices
+    query_positions = mx.arange(query_seq_len)  # [0, 1]
+    key_positions = mx.arange(total_seq_len)  # [0, 1, 2, 3]
+
+    # Calculate valid attention positions
+    # Each query can attend up to: history_len + its_position
+    history_len = total_seq_len - query_seq_len
+    valid_attention = (query_positions[:, None] + history_len) >= key_positions[None, :]
+
+    # Convert to attention mask (-inf for invalid positions)
+    mask = mx.where(valid_attention, 0, -1e9)
     return mask
