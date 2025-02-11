@@ -1,7 +1,6 @@
 import mlx.core as mx
 import mlx.nn as nn
-from typing import List
-import time
+from typing import List, Optional
 
 from mlx_inference.codec.conv import SeanetConfig, MimiConv1d, MimiConvTranspose1d
 
@@ -30,6 +29,24 @@ class MimiResnetBlock(nn.Module):
         for layer in self.block:
             x = layer(x)
         return residual + x
+
+    def step(self, x: mx.array) -> Optional[mx.array]:
+        residual = x
+        for layer in self.block:
+            if callable(getattr(layer, "step", None)):
+                step = layer.step(x)
+                if step is not None:
+                    x = step
+                else:
+                    return None
+            else:
+                x = layer(x)
+        return residual + x
+
+    def reset_state(self):
+        for layer in self.block:
+            if callable(getattr(layer, "reset_state", None)):
+                layer.reset_state()
 
 
 class MimiEncoder(nn.Module):
@@ -121,7 +138,7 @@ class MimiDecoder(nn.Module):
         ]
         self.layers = model
 
-    def __call__(self, x: mx.array):
+    def __call__(self, x: mx.array) -> mx.array:
         for i, layer in enumerate(self.layers):
             # start_time = time.time()
             x = layer(x)
@@ -129,3 +146,22 @@ class MimiDecoder(nn.Module):
             # end_time = time.time()
             # print(f"{i}: {(end_time - start_time) * 1000:3f}ms")
         return x
+
+    def step(self, x: mx.array) -> Optional[mx.array]:
+        # print(f"INPUT SHAPE: {x.shape}")
+        for i, layer in enumerate(self.layers):
+            # print(f"LAYER {i}")
+            if callable(getattr(layer, "step", None)):
+                step = layer.step(x)
+                if step is not None:
+                    x = step
+                else:
+                    return None
+            else:
+                x = layer(x)
+        return x
+
+    def reset(self):
+        for layer in self.layers:
+            if callable(getattr(layer, "reset_state", "None")):
+                layer.reset_state()
