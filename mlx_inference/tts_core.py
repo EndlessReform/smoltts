@@ -9,7 +9,7 @@ from typing import Union
 from tqdm import tqdm
 
 from mlx_inference.io.wav import pcm_to_wav_bytes
-from mlx_inference.lm.cache import make_prompt_cache, KVCache
+from mlx_inference.lm.cache import make_prompt_cache
 from mlx_inference.lm.generate import generate_blocking, SingleBatchGenerator
 
 
@@ -89,9 +89,9 @@ class TTSCore:
                 # audio_data = self.format_audio_chunk(pcm_chunk, output_format)
 
                 # yield audio_data
-        # print(all_pcm[0].shape)
         self.mimi_tokenizer.decoder.reset()
         pcm_chunk = np.array(mx.concat(all_pcm, axis=-1).flatten())
+        mx.metal.clear_cache()
         yield self.format_audio_chunk(pcm_chunk, output_format)
 
     def format_audio_chunk(

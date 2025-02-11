@@ -132,7 +132,7 @@ class MimiConv1d(nn.Module):
     def step(self, x: mx.array) -> Optional[mx.array]:
         """
         Streaming forward pass: processes chunk x and merges with leftover output
-        from the previous step to avoid pops.
+        from the previous step to avoid edge artifacts.
         """
         effective_k_size = (self.kernel_size - 1) * self.dilation + 1
         if not self._left_pad_applied:
@@ -140,7 +140,7 @@ class MimiConv1d(nn.Module):
             padding_total = effective_k_size - self.stride
             x = mx.pad(x, [(0, 0), (padding_total, 0), (0, 0)])
 
-        # 1) Restore previous input
+        # Restore previous input
         if self._stream_prev_in is not None:
             x_long = mx.concat([self._stream_prev_in, x], axis=-2)
         else:
@@ -150,22 +150,12 @@ class MimiConv1d(nn.Module):
             max(x_long.shape[-2] + self.stride - effective_k_size, 0) / self.stride
         )
         if num_frames == 0:
-            # print(
-            #     f"Stride: {self.stride}, k_size: {effective_k_size}, length: {x_long.shape[-2]}"
-            # )
             return None
-            # raise ValueError("Encode not implemented")
 
         offset = num_frames * self.stride
         self._stream_prev_in = x_long[:, offset:, :]
-        # print(
-        #     f"Prev in offset: {offset}, length: {self._stream_prev_in.shape}, new_length: {new_length}"
-        # )
 
         in_length = (num_frames - 1) * self.stride + effective_k_size
-        # print(
-        #     f"in_l: {in_length}, k_size: {effective_k_size}, num_frames: {num_frames}, stride: {self.stride}"
-        # )
         xs = x_long[:, :in_length, :]
         return self.conv(xs)
 
@@ -211,6 +201,10 @@ class MimiConvTranspose1d(nn.Module):
         return x
 
     def step(self, x: mx.array) -> mx.array:
+        """
+        Adapted from rustymimi rather than the HF Transformers port (which has no streaming support).
+        I freely admit I do not understand this, but yet it works.
+        """
         ys = self.conv(x)
         ot = ys.shape[-2]
         if self._stream_prev_out is not None:
