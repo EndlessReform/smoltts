@@ -61,7 +61,9 @@ class MimiModel(nn.Module):
 
         self.quantizer = MimiSplitResidualVectorQuantizer(config.rvq)
 
-    def _decode_frame(self, codes: mx.array, cache: Optional[List[Any]]) -> mx.array:
+    def _decode_frame(
+        self, codes: mx.array, cache: Optional[List[Any]], is_step=False
+    ) -> mx.array:
         # start_time = time.time()
         embeddings = self.quantizer.decode(codes)
         embeddings = self.upsample(embeddings)
@@ -71,9 +73,10 @@ class MimiModel(nn.Module):
         # print(f"{(end_time - start_time) * 1000:3f}ms for transformer")
         embeddings = decoder_outputs
         with mx.stream(mx.gpu):
-            outputs = self.decoder(embeddings)
-        # mx.eval(outputs)
-        # Use the context manager
+            if is_step:
+                outputs = self.decoder.step(embeddings)
+            else:
+                outputs = self.decoder(embeddings)
         out = mx.swapaxes(outputs, 1, 2)
         return out
 
@@ -87,6 +90,11 @@ class MimiModel(nn.Module):
 
         if padding_mask is not None and padding_mask.shape[-1] < audio_values.shape[-1]:
             audio_values = audio_values[:, :, : padding_mask.shape[-1]]
+
+        return audio_values
+
+    def decode_step(self, codes: mx.array, cache: Optional[List[Any]]) -> mx.array:
+        audio_values = self._decode_frame(codes, cache, is_step=True)
 
         return audio_values
 

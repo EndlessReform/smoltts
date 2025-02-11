@@ -148,9 +148,7 @@ class MimiDecoder(nn.Module):
         return x
 
     def step(self, x: mx.array) -> Optional[mx.array]:
-        # print(f"INPUT SHAPE: {x.shape}")
         for i, layer in enumerate(self.layers):
-            # print(f"LAYER {i}")
             if callable(getattr(layer, "step", None)):
                 step = layer.step(x)
                 if step is not None:

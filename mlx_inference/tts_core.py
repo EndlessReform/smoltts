@@ -83,13 +83,14 @@ class TTSCore:
         for token in tqdm(token_gen):
             audio_tokens = token.vq_tensor[:, 1:, :]
             # print(f"Shape: {np_tokens.shape}")
-            pcm_chunk = self.mimi_tokenizer.decode(audio_tokens, mimi_cache)
+            pcm_chunk = self.mimi_tokenizer.decode_step(audio_tokens, mimi_cache)
             if pcm_chunk is not None:
                 all_pcm.append(pcm_chunk)
                 # audio_data = self.format_audio_chunk(pcm_chunk, output_format)
 
                 # yield audio_data
-        print(all_pcm[0].shape)
+        # print(all_pcm[0].shape)
+        self.mimi_tokenizer.decoder.reset()
         pcm_chunk = np.array(mx.concat(all_pcm, axis=-1).flatten())
         yield self.format_audio_chunk(pcm_chunk, output_format)
 

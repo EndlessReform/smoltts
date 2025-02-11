@@ -217,8 +217,6 @@ class MimiConvTranspose1d(nn.Module):
             prev_len = self._stream_prev_out.shape[-2]
             # Remove the bias to avoid it happening multiple times
             if self.conv.bias is not None:
-                # TODO this is almost certainly wrong and needs the reshape.
-                # Fuck you future self, kill yourself, die bitch, I am sick of this fucking bullshit
                 self._stream_prev_out -= self.conv.bias
             ys1 = ys[:, :prev_len, :] + self._stream_prev_out
             ys2 = ys[:, prev_len:, :]
@@ -228,49 +226,6 @@ class MimiConvTranspose1d(nn.Module):
         ys, prev_ys = ys[:, :split_point, :], ys[:, split_point:, :]
         self._stream_prev_out = prev_ys
         return ys
-
-    # def step(self, x: mx.array) -> mx.array:
-    #     """
-    #     Streaming forward pass: processes chunk x and merges with leftover output
-    #     from the previous step to avoid pops.
-    #     """
-    #     # 1) Perform the transposed conv
-    #     y_full = self.conv(x)  # (batch, out_time, out_channels)
-
-    #     # 2) Merge leftover from previous chunk (if any)
-    #     if self._stream_prev_out is not None:
-    #         overlap_sz = self._stream_prev_out.shape[-2]
-    #         # Combine leftover with the first overlap_sz portion of y_full
-    #         # e.g. y_merged_start = y_full[..., :overlap_sz, :] + self._stream_prev_out
-    #         # then cat with the remainder
-    #         if overlap_sz <= y_full.shape[-2]:
-    #             y_merged_start = y_full[..., :overlap_sz, :] + self._stream_prev_out
-    #             y_merged_tail = y_full[..., overlap_sz:, :]
-    #             y_full = mx.concat([y_merged_start, y_merged_tail], axis=-2)
-    #         else:
-    #             # If leftover is larger than new output, just add in place
-    #             y_full = self._stream_prev_out[..., : y_full.shape[-2], :] + y_full
-    #     merged_len = y_full.shape[-2]
-
-    #     # 3) Trim the same as __call__ does
-    #     end = merged_len - self.padding_right
-    #     y_full = y_full[:, self.padding_left : end, :]
-
-    #     # 4) Figure out how many frames we want to keep for the next chunk
-    #     #    Typically leftover_out = (kernel_size - stride)
-    #     #    That portion is the "invalid tail" that should be overlapped next time
-    #     leftover_sz = max(0, self.kernel_size - self.stride)
-    #     if leftover_sz > 0 and y_full.shape[-2] > leftover_sz:
-    #         # the final leftover_sz frames are for next overlap
-    #         new_end = y_full.shape[-2] - leftover_sz
-    #         out_final = y_full[:, :new_end, :]
-    #         self._stream_prev_out = y_full[:, new_end:, :]
-    #     else:
-    #         # no leftover or not enough frames to separate
-    #         out_final = y_full
-    #         self._stream_prev_out = None
-
-    #     return out_final
 
 
 class MeaninglessConvPassthrough(nn.Module):
