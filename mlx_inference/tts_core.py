@@ -70,7 +70,7 @@ class TTSCore:
 
         return audio_data, media_type
 
-    def stream_audio(self, input_text: str, voice: Union[str, int], output_format: str):
+    def stream_audio(self, input_text: str, voice: Union[str, int]):
         prompt = self.get_prompt(input_text, voice)
         token_gen = SingleBatchGenerator(
             self.model, prompt, self.settings.generation, audio_only=True
@@ -78,21 +78,23 @@ class TTSCore:
         mimi_cache = make_prompt_cache(self.mimi_tokenizer.decoder_transformer)
 
         # TODO REMOVE THIS this is just for gut-check
-        all_pcm = []
+        # all_pcm = []
 
         for token in tqdm(token_gen):
             audio_tokens = token.vq_tensor[:, 1:, :]
             # print(f"Shape: {np_tokens.shape}")
             pcm_chunk = self.mimi_tokenizer.decode_step(audio_tokens, mimi_cache)
             if pcm_chunk is not None:
-                all_pcm.append(pcm_chunk)
+                # all_pcm.append(pcm_chunk)
+                audio_data = np.array(pcm_chunk).flatten().tobytes()
+                yield audio_data
                 # audio_data = self.format_audio_chunk(pcm_chunk, output_format)
 
                 # yield audio_data
         self.mimi_tokenizer.decoder.reset()
-        pcm_chunk = np.array(mx.concat(all_pcm, axis=-1).flatten())
+        # pcm_chunk = np.array(mx.concat(all_pcm, axis=-1).flatten())
         mx.metal.clear_cache()
-        yield self.format_audio_chunk(pcm_chunk, output_format)
+        # yield self.format_audio_chunk(pcm_chunk, output_format)
 
     def format_audio_chunk(
         self, pcm_data: np.ndarray, output_format: str = "pcm_24000"

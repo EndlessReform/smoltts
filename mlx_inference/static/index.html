@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PCM TTS Player</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    textarea { width: 100%; font-size: 1rem; }
+    button { font-size: 1rem; padding: 0.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>PCM TTS Player</h1>
+  <p>
+    POST <code>http://localhost:8000/v1/text-to-speech/1/stream?output_format=pcm_24000</code>
+  </p>
+  <p>
+    <code>{
+  "text": "Further optimization is chasing a dead end. It's time to finally bite the bullet and understand flow matching."
+}</code>
+  </p>
+  <textarea id="text-input" rows="6">
+Further optimization is chasing a dead end. It's time to finally bite the bullet and understand flow matching.
+  </textarea>
+  <br>
+  <button onclick="startStream()">Play</button>
+
+  <script>
+    async function startStream() {
+      const text = document.getElementById("text-input").value.trim();
+      
+      // Create an AudioContext at 24kHz
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+      
+      // Make the POST request to your TTS endpoint.
+      // Adjust the URL if needed.
+      const response = await fetch("http://localhost:8000/v1/text-to-speech/1/stream?output_format=pcm_24000", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ "text": text })
+      });
+      
+      if (!response.ok) {
+          console.error("TTS stream failed:", response.statusText);
+          return;
+      }
+      
+      // Read the streaming response. We're assuming it yields raw PCM chunks (Float32, 24kHz).
+      const reader = response.body.getReader();
+
+      // Function to read and play one chunk, then recursively call itself.
+      async function readAndPlay() {
+          const { value, done } = await reader.read();
+          if (done) {
+              console.log("Stream ended");
+              return;
+          }
+          
+          // Convert the received ArrayBuffer to a Float32Array
+          const pcmChunk = new Float32Array(value.buffer);
+          
+          // Create an AudioBuffer with one channel and length equal to the chunk length.
+          const buffer = audioCtx.createBuffer(1, pcmChunk.length, 24000);
+          buffer.copyToChannel(pcmChunk, 0, 0);
+          
+          // Create a buffer source node and play the chunk.
+          const source = audioCtx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioCtx.destination);
+          source.start();
+
+          // When this chunk finishes playing, pull the next one.
+          source.onended = readAndPlay;
+      }
+      
+      readAndPlay();
+    }
+  </script>
+</body>
+</html>

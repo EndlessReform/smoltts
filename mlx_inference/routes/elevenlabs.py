@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Literal
 
 router = APIRouter(prefix="/v1", tags=["ElevenLabs"])
 
@@ -44,14 +44,12 @@ async def stream_tts(
     voice_id: str,
     item: CreateSpeechRequest,
     http_request: Request,
-    output_format: str = "mp3_32",
+    output_format: Literal["pcm_24000"] = "pcm_24000",
 ):
     core = http_request.app.state.tts_core
 
     def generate():
-        for audio_chunk, _ in core.stream_audio(
-            item.text, voice=voice_id, output_format=output_format
-        ):
+        for audio_chunk in core.stream_audio(item.text, voice=voice_id):
             yield audio_chunk
 
     return StreamingResponse(
@@ -59,6 +57,7 @@ async def stream_tts(
         media_type="audio/mpeg" if output_format.startswith("mp3_") else "audio/wav",
         headers={
             "Content-Disposition": f'attachment; filename="speech.{output_format.split("_")[0]}"',
-            "X-Sample-Rate": output_format.split("_")[1],
+            # "X-Sample-Rate": output_format.split("_")[1],
+            "X-Sample-Rate": "24000",
         },
     )

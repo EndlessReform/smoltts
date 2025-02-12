@@ -2,6 +2,7 @@ import uvicorn
 import argparse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 import mlx.core as mx
 from pathlib import Path
 
@@ -77,6 +78,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(openai.router)
 app.include_router(elevenlabs.router)
+
+
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
 
 
 if __name__ == "__main__":
