@@ -3,8 +3,8 @@ import tokenizers
 from tokenizers import Tokenizer
 from typing import Optional
 
-from mlx_inference.lm.config import ModelType
-from mlx_inference.lm.rq_transformer import RQTransformer
+from smoltts_mlx.lm.config import ModelType
+from smoltts_mlx.lm.rq_transformer import RQTransformer
 
 
 class PromptEncoder:

@@ -6,28 +6,19 @@ from fastapi.responses import FileResponse
 import mlx.core as mx
 from pathlib import Path
 
-# import rustymimi
 import time
 from tokenizers import Tokenizer
 
-from mlx_inference.codec.mimi import load_mimi
-from mlx_inference.lm.rq_transformer import (
+from smoltts_mlx.codec.mimi import load_mimi
+from smoltts_mlx.lm.rq_transformer import (
     RQTransformerModelArgs,
     RQTransformer,
     TokenConfig,
 )
-from mlx_inference.lm.utils.prompt import PromptEncoder
-from mlx_inference.tts_core import TTSCore
-from mlx_inference.routes import openai, elevenlabs
-import mlx_inference
-import mlx_inference.settings
-
-
-# def get_mimi_path():
-#     """Get Mimi tokenizer weights from Hugging Face."""
-#     repo_id = "kyutai/moshiko-mlx-bf16"
-#     filename = "tokenizer-e351c8d8-checkpoint125.safetensors"
-#     return huggingface_hub.hf_hub_download(repo_id, filename)
+from smoltts_mlx.lm.utils.prompt import PromptEncoder
+from smoltts_mlx.server.tts_core import TTSCore
+from smoltts_mlx.server.routes import openai, elevenlabs
+from smoltts_mlx.server.settings import ServerSettings
 
 
 parser = argparse.ArgumentParser()
@@ -36,6 +27,7 @@ parser.add_argument("--config", type=str, help="Path to config file")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = app.state.settings
     checkpoint_dir = Path(settings.checkpoint_dir)
     model_type = settings.model_type
 
@@ -69,7 +61,6 @@ async def lifespan(app: FastAPI):
 
     load_end_time = time.time()
     print(f"Loaded model and config in {load_end_time - load_start_time:.3f} seconds")
-    print(f"Default device: {mx.default_device()}")
 
     yield
     print("shutting down")
@@ -85,12 +76,20 @@ async def root():
     return FileResponse("static/index.html")
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, help="Path to config file")
+    parser.add_argument("--port", type=int, help="Port to run on on (default: 8000)")
     args = parser.parse_args()
 
-    settings = mlx_inference.settings.ServerSettings.get_settings(args.config)
+    settings = ServerSettings.get_settings(args.config)
+    print(settings)
     app.state.settings = settings
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = args.port if args.port is not None else 8000
+
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()

@@ -13,8 +13,9 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "mlx-inference",
     "smoltts",
+    "smoltts-mlx",
+    "train",
 ]
 
 [[package]]
@@ -1089,43 +1090,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6e/5a/314451ba1600a57619643bfc61c65e8ce34fed0ad011488ad3bc0fe3e739/mlx-0.22.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:bff0785c1be9ebc323d733c72f8a0683e757210221a9b8d53db3ac40ac7b75cf", size = 26850056 },
     { url = "https://files.pythonhosted.org/packages/57/51/19deaecfe6b34c6ca30b4e966c8224145664747330143463f76b4c218a55/mlx-0.22.0-cp39-cp39-macosx_13_0_arm64.whl", hash = "sha256:121d23087ea706b216c9f43f684c8068a6803d4aec1ddce1e3f6a66e99e797fa", size = 27110566 },
     { url = "https://files.pythonhosted.org/packages/e4/88/56d767e752fea62e44704c9960fdf45a164b35866e6bc94f4a245122d8cc/mlx-0.22.0-cp39-cp39-macosx_14_0_arm64.whl", hash = "sha256:d287de53d69af9129d8b59e13071c9c0711d729ddfc749f3187b0c894bf85d6b", size = 26853719 },
-]
-
-[[package]]
-name = "mlx-inference"
-version = "0.1.0"
-source = { virtual = "mlx_inference" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "huggingface-hub" },
-    { name = "mlx" },
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "numpy", version = "2.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "pydantic" },
-    { name = "pydub" },
-    { name = "rustymimi" },
-    { name = "scipy", version = "1.13.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "scipy", version = "1.15.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "soundfile" },
-    { name = "tokenizers" },
-    { name = "tqdm" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.6" },
-    { name = "huggingface-hub", specifier = ">=0.27.1" },
-    { name = "mlx", specifier = ">=0.22.0" },
-    { name = "numpy", specifier = ">=2.0.2" },
-    { name = "pydantic", specifier = ">=2.10.5" },
-    { name = "pydub", specifier = ">=0.25.1" },
-    { name = "rustymimi", specifier = ">=0.2.2" },
-    { name = "scipy", specifier = ">=1.13.1" },
-    { name = "soundfile", specifier = ">=0.13.1" },
-    { name = "tokenizers", specifier = ">=0.21.0" },
-    { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
 
 [[package]]
@@ -2800,6 +2764,43 @@ requires-dist = [
 dev = [{ name = "ipykernel", specifier = ">=6.29.5" }]
 
 [[package]]
+name = "smoltts-mlx"
+version = "0.1.0"
+source = { editable = "mlx_inference" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "huggingface-hub" },
+    { name = "mlx" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "numpy", version = "2.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "pydantic" },
+    { name = "pydub" },
+    { name = "rustymimi" },
+    { name = "scipy", version = "1.13.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "scipy", version = "1.15.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "soundfile" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.6" },
+    { name = "huggingface-hub", specifier = ">=0.27.1" },
+    { name = "mlx", specifier = ">=0.22.0" },
+    { name = "numpy", specifier = ">=2.0.2" },
+    { name = "pydantic", specifier = ">=2.10.5" },
+    { name = "pydub", specifier = ">=0.25.1" },
+    { name = "rustymimi", specifier = ">=0.2.2" },
+    { name = "scipy", specifier = ">=1.13.1" },
+    { name = "soundfile", specifier = ">=0.13.1" },
+    { name = "tokenizers", specifier = ">=0.21.0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
+]
+
+[[package]]
 name = "sniffio"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3043,6 +3044,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2", size = 78540 },
 ]
+
+[[package]]
+name = "train"
+version = "0.1.0"
+source = { virtual = "train" }
 
 [[package]]
 name = "traitlets"

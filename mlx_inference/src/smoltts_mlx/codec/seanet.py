@@ -2,7 +2,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from typing import List, Optional
 
-from mlx_inference.codec.conv import SeanetConfig, MimiConv1d, MimiConvTranspose1d
+from smoltts_mlx.codec.conv import SeanetConfig, MimiConv1d, MimiConvTranspose1d
 
 
 class MimiResnetBlock(nn.Module):

@@ -6,14 +6,14 @@ import numpy as np
 from pydantic import BaseModel
 from typing import Any, List, Optional
 
-from mlx_inference.codec.rvq import RVQConfig, MimiSplitResidualVectorQuantizer
-from mlx_inference.codec.conv import (
+from smoltts_mlx.codec.rvq import RVQConfig, MimiSplitResidualVectorQuantizer
+from smoltts_mlx.codec.conv import (
     SeanetConfig,
     MimiConv1d,
     GroupedConvTranspose1d,
 )
-from mlx_inference.codec.seanet import MimiEncoder, MimiDecoder
-from mlx_inference.codec.transformer import MimiTransformerConfig, MimiTransformer
+from smoltts_mlx.codec.seanet import MimiEncoder, MimiDecoder
+from smoltts_mlx.codec.transformer import MimiTransformerConfig, MimiTransformer
 
 
 class MimiConfig(BaseModel):

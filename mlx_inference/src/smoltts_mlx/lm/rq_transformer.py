@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
 from typing import Any, Optional, List, Tuple
 
-from mlx_inference.lm.config import ModelType
+from smoltts_mlx.lm.config import ModelType
 
 
 class RQTransformerModelArgs(BaseModel):

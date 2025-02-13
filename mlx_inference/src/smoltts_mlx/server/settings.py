@@ -4,7 +4,7 @@ import os
 import json
 from pydantic import BaseModel, Field
 from typing import Optional
-from mlx_inference.lm.config import ModelType
+from smoltts_mlx.lm.config import ModelType
 
 
 class GenerationSettings(BaseModel):

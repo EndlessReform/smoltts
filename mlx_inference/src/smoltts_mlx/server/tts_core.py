@@ -8,9 +8,9 @@ import time
 from typing import Union
 from tqdm import tqdm
 
-from mlx_inference.io.wav import pcm_to_wav_bytes
-from mlx_inference.lm.cache import make_prompt_cache
-from mlx_inference.lm.generate import generate_blocking, SingleBatchGenerator
+from smoltts_mlx.io.wav import pcm_to_wav_bytes
+from smoltts_mlx.lm.cache import make_prompt_cache
+from smoltts_mlx.lm.generate import generate_blocking, SingleBatchGenerator
 
 
 class TTSCore:

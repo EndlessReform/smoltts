@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 
 
-from mlx_inference.lm.rq_transformer import create_attention_mask
+from smoltts_mlx.lm.rq_transformer import create_attention_mask
 
 
 class MimiTransformerConfig(BaseModel):

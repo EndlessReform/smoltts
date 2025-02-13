@@ -29,7 +29,7 @@ venvPath = "."
 venv = ".venv"
 
 [tool.uv.workspace]
-members = ["mlx_inference"]
+members = ["mlx_inference", "train"]
 
 [dependency-groups]
 dev = ["ipykernel>=6.29.5"]
