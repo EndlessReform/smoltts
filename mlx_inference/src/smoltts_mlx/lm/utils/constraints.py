@@ -1,8 +1,8 @@
 import mlx.core as mx
 from typing import List
 
-from mlx_inference.lm.config import ModelType
-from mlx_inference.lm.rq_transformer import TokenConfig
+from smoltts_mlx.lm.config import ModelType
+from smoltts_mlx.lm.rq_transformer import TokenConfig
 
 
 def constrain_logits_to_audio(

@@ -4,10 +4,10 @@ import time
 from tqdm import tqdm
 from typing import Any, Optional, List
 
-from mlx_inference.lm.rq_transformer import RQTransformer
-from mlx_inference.lm.cache import make_prompt_cache, KVCache
-from mlx_inference.settings import GenerationSettings
-from mlx_inference.lm.utils.samplers import min_p_sampling
+from smoltts_mlx.lm.rq_transformer import RQTransformer
+from smoltts_mlx.lm.cache import make_prompt_cache, KVCache
+from smoltts_mlx.server.settings import GenerationSettings
+from smoltts_mlx.lm.utils.samplers import min_p_sampling
 
 
 class VQToken(BaseModel):

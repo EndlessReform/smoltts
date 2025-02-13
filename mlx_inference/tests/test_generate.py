@@ -4,14 +4,13 @@ from pathlib import Path
 import time
 from tokenizers import Tokenizer
 
-from mlx_inference.lm.rq_transformer import (
+from smoltts_mlx.lm.rq_transformer import (
     RQTransformerModelArgs,
     RQTransformer,
     TokenConfig,
 )
-from mlx_inference.lm.config import ModelType
-from mlx_inference.lm.generate import SingleBatchGenerator
-from mlx_inference.lm.utils.prompt import PromptEncoder
+from smoltts_mlx.lm.config import ModelType
+from smoltts_mlx.lm.generate import SingleBatchGenerator
 
 parser = argparse.ArgumentParser(
     description="A simple one-off CLI generator for DualAR models"
