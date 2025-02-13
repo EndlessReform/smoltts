@@ -2,9 +2,9 @@ import mlx.core as mx
 from datasets import load_dataset
 import numpy as np
 
-from mlx_inference.codec.mimi import load_mimi
-from mlx_inference.io.wav import pcm_to_wav_bytes
-from mlx_inference.lm.cache import make_prompt_cache
+from smoltts_mlx.codec.mimi import load_mimi
+from smoltts_mlx.io.wav import pcm_to_wav_bytes
+from smoltts_mlx.lm.cache import make_prompt_cache
 
 
 def main():

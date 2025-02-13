@@ -140,11 +140,7 @@ class MimiDecoder(nn.Module):
 
     def __call__(self, x: mx.array) -> mx.array:
         for i, layer in enumerate(self.layers):
-            # start_time = time.time()
             x = layer(x)
-            # mx.eval(x)
-            # end_time = time.time()
-            # print(f"{i}: {(end_time - start_time) * 1000:3f}ms")
         return x
 
     def step(self, x: mx.array) -> Optional[mx.array]:

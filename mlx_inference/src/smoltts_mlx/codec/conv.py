@@ -16,8 +16,6 @@ class SeanetConfig(BaseModel):
     kernel_size: int = 7
     residual_kernel_size: int = 3
     last_kernel_size: int = 3
-    # lstm: 0,
-    # pad_mode: conv::PadMode::Constant,
     ratios: List[int] = [8, 6, 5, 4]
     trim_right_ratio: float = 1.0
     sampling_rate: float = 24_000.0
@@ -279,7 +277,6 @@ class GroupedConvTranspose1d(nn.Module):
             groups=self.groups,
         )
 
-        # print(f"IMMEDIATELY AFTER upsample conv: {x.shape}")
         end = x.shape[-2] - self.padding_right
         x = x[:, self.padding_left : end, :]
         return x

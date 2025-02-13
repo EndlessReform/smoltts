@@ -31,7 +31,6 @@ class MimiEuclideanCodebook(nn.Module):
         # This does nothing at inference, but we need it so the keys line up
         self.initialized = mx.array([True], dtype=mx.float32)
         self.cluster_usage = mx.ones(config.codebook_size)
-        # self.freeze(keys=["embed_sum", "cluster_usage"])
         self._embed = None
 
     @property
@@ -177,7 +176,6 @@ class MimiSplitResidualVectorQuantizer(nn.Module):
         quantized_out = self.semantic_residual_vector_quantizer.decode(
             codes[:, : self.num_semantic_quantizers]
         )
-        # Not even going to PRETEND to defensively code here, we all fucking know there's 32 layers
         quantized_out += self.acoustic_residual_vector_quantizer.decode(
             codes[:, self.num_semantic_quantizers :]
         )
