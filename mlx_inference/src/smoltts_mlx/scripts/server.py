@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 import mlx.core as mx
-from pathlib import Path
 
 import time
 from tokenizers import Tokenizer
@@ -28,7 +27,7 @@ parser.add_argument("--config", type=str, help="Path to config file")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = app.state.settings
-    checkpoint_dir = Path(settings.checkpoint_dir)
+    checkpoint_dir = settings.get_checkpoint_dir()
     model_type = settings.model_type
 
     load_start_time = time.time()
@@ -46,8 +45,6 @@ async def lifespan(app: FastAPI):
     model.eval()
 
     print("Downloading and initializing Mimi tokenizer...")
-    # mimi_path = get_mimi_path()
-    # mimi_tokenizer = rustymimi.Tokenizer(mimi_path)
     mimi_tokenizer = load_mimi()
     prompt_encoder = PromptEncoder.from_model(tokenizer, model)
 
@@ -83,7 +80,6 @@ def main():
     args = parser.parse_args()
 
     settings = ServerSettings.get_settings(args.config)
-    print(settings)
     app.state.settings = settings
 
     port = args.port if args.port is not None else 8000

@@ -1,5 +1,5 @@
 {
-    "checkpoint_dir": "../inits/kokoro_v1/smoltts_byte_150m",
+    "model_id": "jkeisling/smoltts_v0",
     "generation": {
         "default_temp": 0.0,
         "default_fast_temp": 0.5,

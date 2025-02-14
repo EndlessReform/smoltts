@@ -78,6 +78,25 @@ response.stream_to_file(speech_file_path)
 
 Default settings are stored by default at `~/Library/Cache/smoltts`.
 
+You can also specify a JSON file with `--config`.
+
+```json
+{
+  // "checkpoint_dir": "../inits/foobar/"
+  "model_id": "jkeisling/smoltts_v0",
+  "generation": {
+    "default_temp": 0.0,
+    "default_fast_temp": 0.5,
+    "min_p": 0.1
+  },
+  "model_type": {
+    "family": "dual_ar",
+    "codec": "mimi",
+    "version": null
+  }
+}
+```
+
 ## Library
 
 TODO

@@ -1,9 +1,10 @@
-# in mlx_inference/settings.py
-from pathlib import Path
-import os
+from huggingface_hub import snapshot_download
 import json
-from pydantic import BaseModel, Field
+import os
+from pathlib import Path
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
+
 from smoltts_mlx.lm.config import ModelType
 
 
@@ -15,9 +16,19 @@ class GenerationSettings(BaseModel):
 
 
 class ServerSettings(BaseModel):
-    checkpoint_dir: str
+    model_id: Optional[str] = None
+    checkpoint_dir: Optional[str] = None
     generation: GenerationSettings
     model_type: ModelType
+
+    @model_validator(mode="after")
+    def validate_model_source(self):
+        if self.model_id is not None and self.checkpoint_dir is not None:
+            raise ValueError("Cannot specify both model_id and checkpoint_dir")
+        if self.model_id is None and self.checkpoint_dir is None:
+            raise ValueError("Must specify either model_id or checkpoint_dir")
+
+        return self
 
     @classmethod
     def get_settings(cls, config_path: Optional[str] = None) -> "ServerSettings":
@@ -36,7 +47,6 @@ class ServerSettings(BaseModel):
         if config_path:
             with open(config_path) as f:
                 return cls(**json.loads(f.read()))
-
         # Use macOS cache dir
         config_dir = Path(os.path.expanduser("~/Library/Caches/smolltts/settings"))
         config_path = config_dir / "config.json"
@@ -49,3 +59,11 @@ class ServerSettings(BaseModel):
 
         with open(config_path) as f:
             return cls(**json.loads(f.read()))
+
+    def get_checkpoint_dir(self) -> Path:
+        if self.checkpoint_dir is not None:
+            return Path(self.checkpoint_dir)
+        else:
+            # guaranteed to exist by validator above
+            hf_repo_path = snapshot_download(self.model_id)
+            return Path(hf_repo_path)
