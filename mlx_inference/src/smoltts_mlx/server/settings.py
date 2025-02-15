@@ -2,17 +2,11 @@ from huggingface_hub import snapshot_download
 import json
 import os
 from pathlib import Path
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, model_validator
 from typing import Optional
 
 from smoltts_mlx.lm.config import ModelType
-
-
-class GenerationSettings(BaseModel):
-    default_temp: float = Field(default=0.7)
-    default_fast_temp: Optional[float] = Field(default=0.7)
-    min_p: Optional[float] = Field(default=None)
-    max_new_tokens: int = Field(default=1024)
+from smoltts_mlx.lm.generate import GenerationSettings
 
 
 class ServerSettings(BaseModel):
