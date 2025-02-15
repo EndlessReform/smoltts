@@ -28,11 +28,11 @@ class ServerSettings(BaseModel):
     def get_settings(cls, config_path: Optional[str] = None) -> "ServerSettings":
         """Get settings from config file or create default in cache dir."""
         default_settings = {
-            "checkpoint_dir": "./checkpoints",
+            "model_id": "jkeisling/smoltts_v0",
             "model_type": {"family": "dual_ar", "codec": "mimi", "version": None},
             "generation": {
-                "default_temp": 0.0,
-                "default_fast_temp": 0.5,
+                "default_temp": 0.5,
+                "default_fast_temp": 0.0,
                 "min_p": 0.10,
                 "max_new_tokens": 1024,
             },

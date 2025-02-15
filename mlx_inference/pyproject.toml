@@ -1,6 +1,6 @@
 [project]
 name = "smoltts_mlx"
-version = "0.1.0"
+version = "0.1.1"
 description = "MLX inference for autoregressive speech models"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,6 +25,6 @@ smoltts-server = "smoltts_mlx.scripts.server:main"
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["smoltts_mlx"]
-package-dir = { "" = "src" }
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["smoltts_mlx*"]
