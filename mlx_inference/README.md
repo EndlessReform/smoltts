@@ -25,7 +25,14 @@ Options:
 
 ### Supported voices
 
-TODO fill this in
+As of February 2025, we support these voices from Kokoro:
+
+- **American:** heart (default), bella, nova, sky, sarah, michael, fenrir, liam
+- **British:** emma, isabella, fable
+
+Voice cloning is currently not supported, but coming soon!
+
+Unfortunately, GitHub doesn't support audio previews, but check out `docs/examples` for samples.
 
 ### ElevenLabs endpoints
 
@@ -114,7 +121,7 @@ Audio(pcm, rate=model.sampling_rate)
 
 # Streaming generation for real-time audio
 for pcm_chunk in model.stream("This is a longer piece of text to stream."):
-    # Process chunks as they're generated
+    # Yields 80ms PCM frames as they're generated
     process_audio(pcm_chunk)
 ```
 

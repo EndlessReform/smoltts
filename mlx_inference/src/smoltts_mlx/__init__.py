@@ -64,14 +64,14 @@ class SmolTTS:
     def __call__(
         self,
         input: str,
-        voice: Optional[str] = "af_bella",
+        voice: Optional[str] = "heart",
         speaker: Optional[mx.array] = None,
     ) -> np.ndarray:
         """
         Returns flattened PCM array
         """
         prompt = self._get_prompt(
-            input, voice if voice is not None else "0", sysprompt=speaker
+            input, voice if voice is not None else "heart", sysprompt=speaker
         )
         # TODO make this configurable
         gen = generate_blocking(self.lm, prompt, GenerationSettings())
@@ -80,7 +80,7 @@ class SmolTTS:
 
         return np.array(out).flatten()
 
-    def stream(self, input: str, voice: Optional[str] = "af_bella"):
+    def stream(self, input: str, voice: Optional[str] = "heart"):
         prompt = self._get_prompt(input, voice if voice is not None else "0")
         frame_gen = SingleBatchGenerator(self.lm, prompt, GenerationSettings())
         mimi_cache = make_prompt_cache(self.codec.decoder_transformer)
@@ -118,9 +118,30 @@ class SmolTTS:
         return mx.concat(turns, axis=1)
 
     def _get_prompt(self, input: str, voice: str, sysprompt=None):
+        # TODO remove this after voices are configurable
+        voice_map = {
+            k: v
+            for v, k in enumerate(
+                [
+                    "heart",
+                    "bella",
+                    "nova",
+                    "sky",
+                    "sarah",
+                    "michael",
+                    "fenrir",
+                    "liam",
+                    "emma",
+                    "isabella",
+                    "fable",
+                ]
+            )
+        }
+        voice_id = voice_map.get(voice, 0)
+
         if sysprompt is None:
             sysprompt = self.prompt_encoder.encode_text_turn(
-                "system", f"<|speaker:{voice}|>"
+                "system", f"<|speaker:{voice_id}|>"
             )
         user_prompt = self.prompt_encoder.encode_text_turn("user", input)
         assistant_prefix = self.prompt_encoder.encode_text_turn("assistant")
