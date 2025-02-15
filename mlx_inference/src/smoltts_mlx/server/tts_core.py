@@ -28,10 +28,7 @@ class TTSCore:
     def generate_audio(
         self, input_text: str, voice: Union[str, int], response_format: str = "wav"
     ):
-        start_time = time.time()
         pcm_data = self.model(input_text, str(voice))
-        end_time = time.time()
-        print(f"Took {end_time - start_time:.2f}s to decode")
 
         start_time = time.time()
         audio_data, media_type = self.format_audio_chunk(
