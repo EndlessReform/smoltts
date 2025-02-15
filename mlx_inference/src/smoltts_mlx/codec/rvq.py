@@ -14,8 +14,13 @@ class RVQConfig(BaseModel):
 
 
 @mx.compile
-def cdist(x: mx.array, y: mx.array) -> mx.array:
-    return mx.sqrt(mx.sum((mx.expand_dims(x, 1) - mx.expand_dims(y, 0)) ** 2, axis=-1))
+def cdist(x: mx.array, y: mx.array):
+    x1_square_norms = mx.sum(x**2, axis=-1, keepdims=True)
+    x2_square_norms = mx.swapaxes(mx.sum(y**2, axis=-1, keepdims=True), 2, 1)
+
+    dot_products = mx.matmul(x, mx.swapaxes(y, 2, 1))
+    dists_sq = x1_square_norms + x2_square_norms - 2 * dot_products
+    return dists_sq.sqrt()
 
 
 class MimiEuclideanCodebook(nn.Module):
@@ -47,15 +52,15 @@ class MimiEuclideanCodebook(nn.Module):
         return quantize
 
     def quantize(self, x: mx.array) -> mx.array:
-        dists = cdist(x[:, mx.newaxis], self.embed_sum[:, mx.newaxis])[0]
-        embed_ind = dists.argmin(dim=-1)
+        dists = cdist(x[mx.newaxis, :], self.embed[mx.newaxis, :])[0]
+        embed_ind = dists.argmin(axis=-1)
         return embed_ind
 
     def encode(self, x: mx.array) -> mx.array:
         shape = x.shape
         x = x.reshape((-1, shape[-1]))
         embed_ind = self.quantize(x)
-        embed_ind = embed_ind.view(*shape[:-1])
+        embed_ind = embed_ind.reshape(shape[:-1])
         return embed_ind
 
 
@@ -65,7 +70,6 @@ class MimiVectorQuantization(nn.Module):
         self.codebook = MimiEuclideanCodebook(config)
 
     def encode(self, x: mx.array) -> mx.array:
-        x = mx.transpose(x, (0, 2, 1))
         embed_in = self.codebook.encode(x)
         return embed_in
 
@@ -105,7 +109,7 @@ class MimiResidualVectorQuantizer(nn.Module):
         for layer in self.layers[:num_quantizers]:
             indices = layer.encode(residual)
             quantized = layer.decode(indices)
-            residual = residual - quantized
+            residual = residual - mx.swapaxes(quantized, 1, 2)
             all_indices.append(indices)
 
         out_indices = mx.stack(all_indices)

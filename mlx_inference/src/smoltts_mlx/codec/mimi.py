@@ -43,7 +43,7 @@ class MimiModel(nn.Module):
             kernel_size=2 * int(encodec_frame_rate / config.rvq.frame_rate),
             stride=2,
             bias=False,
-            pad_mode="replicate",
+            pad_mode="edge",
         )
         kernel_size = 2 * int(encodec_frame_rate / config.rvq.frame_rate)
         self.upsample = GroupedConvTranspose1d(
@@ -60,6 +60,15 @@ class MimiModel(nn.Module):
         self.decoder = MimiDecoder(config.seanet)
 
         self.quantizer = MimiSplitResidualVectorQuantizer(config.rvq)
+
+    def encode(self, x: mx.array):
+        # Deliberately not implementing streaming encode for now
+        x = mx.swapaxes(x, 1, 2)
+        embedded = self.encoder(x)
+        transformed = self.encoder_transformer(embedded)
+        downsampled = self.downsample(transformed)
+        codes = self.quantizer.encode(downsampled)
+        return mx.swapaxes(codes, 0, 1)
 
     def _decode_frame(
         self, codes: mx.array, cache: Optional[List[Any]], is_step=False
