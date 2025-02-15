@@ -8,6 +8,12 @@ Requires working Python instance and Apple Silicon Mac.
 pip install smoltts-mlx
 ```
 
+Or if you have [`uv`](https://docs.astral.sh/uv/) (hint hint), simply use [uvx](https://docs.astral.sh/uv/guides/tools/):
+
+```bash
+ux --from smoltts_mlx smoltts-server
+```
+
 ## Server
 
 ### Startup
