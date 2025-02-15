@@ -99,7 +99,86 @@ You can also specify a JSON file with `--config`.
 
 ## Library
 
-TODO
+### Basic Usage
+
+```python
+from smoltts_mlx import SmolTTS
+from IPython.display import Audio
+
+# Initialize model (downloads weights automatically)
+model = SmolTTS()
+
+# Basic generation to numpy PCM array
+pcm = model("Hello world!")
+Audio(pcm, rate=model.sampling_rate)
+
+# Streaming generation for real-time audio
+for pcm_chunk in model.stream("This is a longer piece of text to stream."):
+    # Process chunks as they're generated
+    process_audio(pcm_chunk)
+```
+
+### Voice Selection
+
+```python
+# Use a specific voice
+pcm = model("Hello!", voice="af_bella")
+
+# Create a custom voice from reference audio
+speaker_prompt = model.create_speaker(
+    system_prompt="<|speaker:0|>",
+    samples=[{
+        "text": "This is a sample sentence.",
+        "audio": reference_audio  # Numpy array of PCM data
+    }]
+)
+
+# Generate with custom voice
+pcm = model(
+    "Using a custom voice created from reference audio.",
+    speaker_prompt=speaker_prompt
+)
+```
+
+### Working with Audio
+
+The model works with raw PCM audio at 24kHz sample rate. For format conversion:
+
+```python
+import soundfile as sf
+
+# Save to WAV
+sf.write("output.wav", pcm, model.sampling_rate)
+
+# Load reference audio
+audio, sr = sf.read("reference.wav")
+if sr != model.sampling_rate:
+    # Resample if needed
+    audio = resampy.resample(audio, sr, model.sampling_rate)
+```
+
+### Advanced Configuration
+
+```python
+# Use custom model weights
+model = SmolTTS(
+    model_id="path/to/custom/model",
+    checkpoint_dir="/path/to/local/weights"
+)
+
+# Access underlying components
+mimi_codes = model.codec.encode(pcm)  # Work with Mimi tokens directly
+```
+
+### Performance Notes
+
+- First generation may be slower due to model loading and warmup
+- Use streaming for longer texts to begin playback before full generation
+
+### Requirements
+
+- Apple Silicon Mac (M1/M2/M3)
+- Python 3.9 or later
 
 ## Developing locally
 

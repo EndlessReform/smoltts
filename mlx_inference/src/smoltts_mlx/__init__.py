@@ -25,7 +25,7 @@ from smoltts_mlx.lm.generate import (
 class SmolTTS:
     def __init__(
         self,
-        model_id="jkeisling/smolltts_v0",
+        model_id="jkeisling/smoltts_v0",
         checkpoint_dir: Optional[str] = None,
     ):
         checkpoint_dir = Path(
