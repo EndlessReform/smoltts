@@ -1,17 +1,23 @@
 # SmolTTS: a text-to-speech laboratory
 
 This repo is a personal laboratory for training autoregressive text-audio models.
-Quality not yet guaranteed.
+
+Assume everything will change; quality right now is pretty mid. Will get better.
 
 ## Using pretrained models
 
-### Shinzou
+### smoltts_v0
 
 A distillation of [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) to the RQ Transformer architecture. Released at 70M and 150M scale.
 
-For MLX inference on Apple Silicon, you'll need a working Python installation.
+For MLX inference on Apple Silicon, you'll need a working Python installation. See the `mlx_inference` folder for setup docs!
 
-TODO: PyPi installation
+```bash
+# tl;dr
+uvx --from smoltts_mlx smoltts-server
+```
+
+Candle.rs docs coming soon.
 
 ## Using datasets
 
