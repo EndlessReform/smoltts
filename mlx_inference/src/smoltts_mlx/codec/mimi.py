@@ -63,6 +63,7 @@ class MimiModel(nn.Module):
 
     def encode(self, x: mx.array):
         # Deliberately not implementing streaming encode for now
+        x = mx.swapaxes(x, 1, 2)
         embedded = self.encoder(x)
         transformed = self.encoder_transformer(embedded)
         downsampled = self.downsample(transformed)

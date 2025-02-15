@@ -14,3 +14,4 @@ datasets
 inits
 mlx_trace*
 pytorch_trace.json
+!docs/ground_truth/*.wav

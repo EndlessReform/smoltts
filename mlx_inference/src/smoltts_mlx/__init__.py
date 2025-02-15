@@ -65,11 +65,14 @@ class SmolTTS:
         self,
         input: str,
         voice: Optional[str] = "af_bella",
+        speaker: Optional[mx.array] = None,
     ) -> np.ndarray:
         """
         Returns flattened PCM array
         """
-        prompt = self._get_prompt(input, voice if voice is not None else "0")
+        prompt = self._get_prompt(
+            input, voice if voice is not None else "0", sysprompt=speaker
+        )
         # TODO make this configurable
         gen = generate_blocking(self.lm, prompt, GenerationSettings())
         out = self.codec.decode(gen)
@@ -112,12 +115,13 @@ class SmolTTS:
                 *turns,
             ]
 
-        return mx.concat(turns)
+        return mx.concat(turns, axis=1)
 
-    def _get_prompt(self, input: str, voice: str):
-        sysprompt = self.prompt_encoder.encode_text_turn(
-            "system", f"<|speaker:{voice}|>"
-        )
+    def _get_prompt(self, input: str, voice: str, sysprompt=None):
+        if sysprompt is None:
+            sysprompt = self.prompt_encoder.encode_text_turn(
+                "system", f"<|speaker:{voice}|>"
+            )
         user_prompt = self.prompt_encoder.encode_text_turn("user", input)
         assistant_prefix = self.prompt_encoder.encode_text_turn("assistant")
         prompt = mx.concat([sysprompt, user_prompt, assistant_prefix], axis=1)[

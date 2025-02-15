@@ -50,7 +50,7 @@ class PromptEncoder:
         if codes.ndim != 2:
             raise ValueError("Must be single batch")
 
-        semantic_line = codes[0, :] + self.semantic_offset
+        semantic_line = (codes[0, :] + self.semantic_offset)[mx.newaxis, :]
         lower_codes = codes
         vq_block = mx.concat([semantic_line, lower_codes])
         im_end = self.tokenize_text("<|im_end|>\n")
