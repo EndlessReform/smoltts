@@ -30,20 +30,24 @@ def load_splits(path: str, max_sequence_len: int = 768) -> Tuple[Dataset, Datase
     return train_dataset, val_dataset
 
 
-def collate_fn(batch, semantic_pad_id: int):
+def collate_fn(
+    batch, semantic_pad_id: int, duplicate_code_0: bool = True, codebook_size: int = 8
+):
     """
     batch is a list of dicts: each dict has "tokens" shape [9, T],
     and "labels" shape [9, T].
     We pad them into [B, 9, T_max].
     """
+    # TODO handle >8 codebooks
+    height = codebook_size + (1 if duplicate_code_0 else 0)
     max_input_len = max(item["tokens"].shape[1] for item in batch)
 
     B = len(batch)
     # We'll create padded arrays:
-    tokens = torch.full((B, 9, max_input_len), 0, dtype=torch.long)  # 2=some <PAD>
+    tokens = torch.full((B, height, max_input_len), 0, dtype=torch.long)  # 2=some <PAD>
     tokens[:, 0, :] = semantic_pad_id
     labels = torch.full(
-        (B, 9, max_input_len), -100, dtype=torch.long
+        (B, height, max_input_len), -100, dtype=torch.long
     )  # default is ignore_index
 
     pad_mask = torch.ones(B, max_input_len)

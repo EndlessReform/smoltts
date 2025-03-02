@@ -95,6 +95,7 @@ class RQTransformerModelArgs(BaseModelArgs):
     fast_attention_qkv_bias: Optional[bool] = None
     depthwise_wte: Optional[bool] = False
     depthwise_output: Optional[bool] = False
+    duplicate_code_0: Optional[bool] = True
 
     def __post_init__(self):
         super().__post_init__()
@@ -207,7 +208,12 @@ class BaseTransformer(nn.Module):
         text_embeds = self.embeddings(x[:, 0, :])
 
         # Get all codebook embeddings
-        vq_embeds = self.codebook_embeddings(x[:, 1:, :] + self.semantic_offset)
+        semantic_offset = (
+            self.semantic_offset
+            if self.config.duplicate_code_0
+            else self.semantic_offset[1:]
+        )
+        vq_embeds = self.codebook_embeddings(x[:, 1:, :] + semantic_offset)
         vq_embeds_sum = vq_embeds.sum(dim=1)
 
         vq_embeds_sum[x[:, 1] == 0] = 0
@@ -335,6 +341,9 @@ class RQTransformer(BaseTransformer):
         else:
             self.fast_project_in = nn.Identity()
 
+        self.max_fast_seqlen = config.num_codebooks - (
+            0 if config.duplicate_code_0 else 1
+        )
         # Fast transformer
         fast_emb_input_dim = (
             config.codebook_size * (config.num_codebooks - 1)
@@ -347,8 +356,9 @@ class RQTransformer(BaseTransformer):
             0,
             self.config.codebook_size * (self.config.num_codebooks - 1),
             self.config.codebook_size,
-        ).unsqueeze(1)
-        self.register_buffer("codebook_offset", offset, persistent=False)
+        )
+        offset = offset if self.config.duplicate_code_0 else offset[1:]
+        self.register_buffer("codebook_offset", offset.unsqueeze(1), persistent=False)
 
         # The equivalent bs is so large that sdpa doesn't work
         override_config = dataclasses.replace(
@@ -360,7 +370,6 @@ class RQTransformer(BaseTransformer):
             intermediate_size=config.fast_intermediate_size,
             attention_qkv_bias=config.fast_attention_qkv_bias,
         )
-
         self.fast_layers = nn.ModuleList(
             TransformerBlock(override_config, use_sdpa=False, is_fast=True)
             for _ in range(config.n_fast_layer)
@@ -368,7 +377,7 @@ class RQTransformer(BaseTransformer):
         self.fast_norm = RMSNorm(config.fast_dim, eps=config.norm_eps)
         if config.depthwise_output:
             self.fast_output = DepthwiseLinear(
-                config.num_codebooks, config.fast_dim, config.codebook_size
+                self.max_fast_seqlen, config.fast_dim, config.codebook_size
             )
         else:
             self.fast_output = nn.Linear(
@@ -380,7 +389,7 @@ class RQTransformer(BaseTransformer):
         self.register_buffer(
             "fast_freqs_cis",
             precompute_freqs_cis(
-                config.num_codebooks,
+                self.max_fast_seqlen,
                 config.fast_dim // config.fast_n_head,
                 config.rope_base,
             ),
@@ -421,7 +430,7 @@ class RQTransformer(BaseTransformer):
 
         if torch.all(codebook_mask):
             # If all codebooks are padded, we keep first 8 to make sure the model runs
-            codebook_mask[:8] = False
+            codebook_mask[: self.max_fast_seqlen] = False
 
         x_bs, x_len = x.size(0), x.size(1)
         indices = torch.arange(x_bs, device=x.device)[~codebook_mask]
@@ -460,13 +469,9 @@ class RQTransformer(BaseTransformer):
 
         codebook_logits = buffer
 
-        assert codebook_logits.shape[1] == self.config.num_codebooks
+        assert codebook_logits.shape[1] == self.max_fast_seqlen
         codebook_logits = rearrange(
-            codebook_logits,
-            "(b s) n d -> b s n d",
-            b=b,
-            s=s,
-            n=self.config.num_codebooks,
+            codebook_logits, "(b s) n d -> b s n d", b=b, s=s, n=self.max_fast_seqlen
         )
 
         return TransformerForwardResult(
@@ -558,7 +563,7 @@ class Attention(nn.Module):
             v,
             dropout_p=self.dropout if self.training else 0.0,
             is_causal=True,
-            attn_mask=mask,
+            # attn_mask=mask,
         )
 
         y = y.transpose(1, 2).contiguous().view(bsz, seqlen, self.dim)
