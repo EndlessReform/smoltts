@@ -18,7 +18,7 @@ class GenerationSettings(BaseModel):
 
 class VQToken(BaseModel):
     semantic_code: int
-    vq_codes: List[int]
+    audio_codes: Optional[Any]
     vq_tensor: Any
 
 
@@ -110,7 +110,7 @@ class SingleBatchGenerator:
         codes = []
         x = hidden_states[mx.newaxis, :, :]
         fast_cache = make_prompt_cache(self.model, is_fast=True)
-        for i in range(0, self.model.config.num_codebooks):
+        for i in range(0, self.model.max_fast_seqlen):
             fast_logits = self.model.forward_generate_fast(x, i, cache=fast_cache)
             mx.eval(fast_logits)
 
@@ -134,7 +134,8 @@ class SingleBatchGenerator:
             # model GETS higher
             code = next_token_tensor.flatten()[0]
             if self.model.config.depthwise_wte:
-                next_token_tensor += max(0, i * self.model.config.codebook_size)
+                offset = i if self.model.config.duplicate_code_0 else i + 1
+                next_token_tensor += max(0, offset * self.model.config.codebook_size)
 
             x = self.model.fast_embeddings(next_token_tensor)
             codes.append(code)
@@ -142,6 +143,21 @@ class SingleBatchGenerator:
         codes_tensor = mx.array([slow_token_id, *codes], dtype=mx.uint32)[
             mx.newaxis, :, mx.newaxis
         ]
+        if (
+            slow_token_id >= self.model.token_config.semantic_start_id
+            and self.model.token_config.semantic_end_id is not None
+            and slow_token_id <= self.model.token_config.semantic_end_id
+        ):
+            audio_code = slow_token_id - self.model.token_config.semantic_start_id
+            codes_arr = (
+                codes if self.model.config.duplicate_code_0 else [audio_code, *codes]
+            )
+            audio_tensor = mx.array(codes_arr, dtype=mx.uint32)[
+                mx.newaxis, :, mx.newaxis
+            ]
+        else:
+            audio_tensor = None
+
         self.input_pos += prompt_length if self.input_pos is None else 1
         self.prompt = (
             None
@@ -149,7 +165,9 @@ class SingleBatchGenerator:
             else codes_tensor
         )
         return VQToken(
-            semantic_code=slow_token_id.tolist(), vq_codes=codes, vq_tensor=codes_tensor
+            semantic_code=slow_token_id.tolist(),
+            audio_codes=audio_tensor,
+            vq_tensor=codes_tensor,
         )
 
 
@@ -174,16 +192,21 @@ def generate_blocking(
         f"{prefill_ms:3f}ms prompt processing: {prompt_size} tokens ({prompt_size / (prefill_end_time - prefill_start_time):3f} tokens/s)"
     )
 
-    previous_vq_codes = [first_vq_token.vq_tensor]
+    previous_vq_codes = (
+        [first_vq_token.audio_codes] if audio_only else [first_vq_token.vq_tensor]
+    )
 
     decode_start_time = time.time()
     for maybe_vq_token in tqdm(token_generator):
-        previous_vq_codes.append(maybe_vq_token.vq_tensor)
+        if audio_only:
+            if maybe_vq_token.audio_codes is not None:
+                previous_vq_codes.append(maybe_vq_token.audio_codes)
+        else:
+            previous_vq_codes.append(maybe_vq_token.vq_tensor)
     decode_end_time = time.time()
     decode_duration = decode_end_time - decode_start_time
 
-    full_output = mx.concat(previous_vq_codes, axis=-1)
-    out_tokens = full_output[:, 1:, :] if audio_only else full_output
+    out_tokens = mx.concat(previous_vq_codes, axis=-1)
     out_len = len(previous_vq_codes) - 1
     frame_rate = 12.5 if model.model_type.family == "dual_ar" else 21.535
     print(

@@ -9,7 +9,7 @@ from smoltts_mlx.lm.rq_transformer import RQTransformer
 
 class PromptEncoder:
     tokenizer: Tokenizer
-    num_codebooks: int
+    depth: int
     model_type: ModelType
 
     def __init__(
@@ -18,10 +18,11 @@ class PromptEncoder:
         model_type: ModelType,
         semantic_offset: int,
         num_codebooks: int = 8,
+        duplicate_code_0: bool = True,
     ):
         self.tokenizer = tokenizer
         self.model_type = model_type
-        self.num_codebooks = num_codebooks
+        self.depth = num_codebooks if duplicate_code_0 else num_codebooks - 1
         self.semantic_offset = semantic_offset
 
     @classmethod
@@ -31,6 +32,9 @@ class PromptEncoder:
             num_codebooks=model.config.num_codebooks,
             model_type=model.model_type,
             semantic_offset=model.token_config.semantic_start_id,
+            duplicate_code_0=dc0
+            if (dc0 := model.config.duplicate_code_0) is not None
+            else True,
         )
 
     def tokenize_text(self, text: str) -> mx.array:
@@ -38,7 +42,7 @@ class PromptEncoder:
             text, add_special_tokens=True
         )
         tokens = mx.array(turn_codes.ids, dtype=mx.uint32)[mx.newaxis, :]
-        zeros = mx.zeros([self.num_codebooks, tokens.shape[-1]], dtype=mx.uint32)
+        zeros = mx.zeros([self.depth, tokens.shape[-1]], dtype=mx.uint32)
         return mx.concat([tokens, zeros], axis=0)
 
     def encode_text_turn(self, role: str, content: Optional[str] = None) -> mx.array:
