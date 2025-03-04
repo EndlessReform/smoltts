@@ -1,13 +1,13 @@
 from pydantic import BaseModel, Field
 import torch
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
-from typing import Union
+from typing import Optional, Union
 
 
 class TokenizationConfig(BaseModel):
     num_codebooks: int = Field(default=8)
     acoustic_delay: int = Field(default=0)
-    duplicate_code1: bool = Field(default=True)
+    duplicate_code_0: Optional[bool] = Field(default=True)
 
 
 class PromptEncoder:
@@ -27,7 +27,7 @@ class PromptEncoder:
         self.pad_id = tokenizer.encode("<|pad|>")[0]
         zero_buffer = [0] * (
             self.config.num_codebooks
-            if self.config.duplicate_code1
+            if self.config.duplicate_code_0
             else self.config.num_codebooks - 1
         )
         self.trailing_im_end = torch.tensor(
@@ -40,7 +40,7 @@ class PromptEncoder:
     def get_lower_zeros(self, length: int) -> torch.Tensor:
         return torch.zeros(
             self.config.num_codebooks
-            if self.config.duplicate_code1
+            if self.config.duplicate_code_0
             else self.config.num_codebooks - 1,
             length,
             dtype=torch.long,
@@ -69,7 +69,7 @@ class PromptEncoder:
             raise ValueError("Must be single batch")
 
         semantic_line = (codes[0, :] + self.semantic_offset).unsqueeze(0)
-        lower_codes = codes if self.config.duplicate_code1 else codes[1:, :]
+        lower_codes = codes if self.config.duplicate_code_0 else codes[1:, :]
 
         # TODO DO NOT MERGE, WRONG BAD
         if self.config.acoustic_delay != 0:
@@ -92,23 +92,22 @@ class PromptEncoder:
         """
         if codes.ndim != 2:
             raise ValueError("Must be single batch!")
-        
+
         semantic_line = (codes[0, :] + self.semantic_offset).unsqueeze(0)
         first_residual = codes[0, :].unsqueeze(0)
         remaining_codes = codes[1:, :]
 
         corrupt_mask = torch.rand_like(remaining_codes.float()) < dropout
-        
+
         # TODO: parameterize for 1024-size codebook
         random_codes = torch.randint(
-            low=1,
-            high=2048,
-            size=remaining_codes.shape,
-            device=remaining_codes.device
+            low=1, high=2048, size=remaining_codes.shape, device=remaining_codes.device
         )
 
-        corrupted_remaining_codes = torch.where(corrupt_mask, random_codes, remaining_codes)
+        corrupted_remaining_codes = torch.where(
+            corrupt_mask, random_codes, remaining_codes
+        )
         vq_block = torch.cat([semantic_line, first_residual, corrupted_remaining_codes])
         block = torch.cat([vq_block, self.trailing_im_end], dim=1)
-        
+
         return block

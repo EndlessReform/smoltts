@@ -15,6 +15,7 @@ from data_pipeline.utils.prompt import PromptEncoder, TokenizationConfig
 class TokenizationStrategy(BaseModel):
     tokenizer_path: str
     strategy: Literal["bpe", "bytelevel", "phoneme", "hybrid"]
+    duplicate_code_0: Optional[bool] = True
 
 
 class AudioConfig(BaseModel):
@@ -206,7 +207,9 @@ def main():
         dataset_config.tokenization.tokenizer_path
     )
     tokenizer.use_default_system_prompt = False
-    tokenization_config = TokenizationConfig()
+    tokenization_config = TokenizationConfig(
+        duplicate_code_0=dataset_config.tokenization.duplicate_code_0
+    )
     prompt_encoder = PromptEncoder(tokenizer, tokenization_config)
     sysprompt_encoder = SyspromptEncoder(
         dataset_config=dataset_config, prompt_encoder=prompt_encoder

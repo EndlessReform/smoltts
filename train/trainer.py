@@ -139,9 +139,15 @@ def validate(
 
 
 def create_dataloaders(
-    train_ds: Dataset, val_ds: Dataset, config: TrainingConfig, pad_id: int
+    train_ds: Dataset,
+    val_ds: Dataset,
+    config: TrainingConfig,
+    pad_id: int,
+    duplicate_code_0: bool = True,
 ) -> tuple[DataLoader, DataLoader]:
-    pad_collate_fn = partial(collate_fn, semantic_pad_id=pad_id)
+    pad_collate_fn = partial(
+        collate_fn, semantic_pad_id=pad_id, duplicate_code_0=duplicate_code_0
+    )
 
     """Create train and validation dataloaders"""
     train_loader = DataLoader(
@@ -183,7 +189,11 @@ def train(
         wandb.config.update(config.model_dump())
 
     train_loader, val_loader = create_dataloaders(
-        train_ds, val_ds, config, pad_id=pad_id
+        train_ds,
+        val_ds,
+        config,
+        pad_id=pad_id,
+        duplicate_code_0=model.config.duplicate_code_0,
     )
 
     # Add right before the training loop

@@ -37,6 +37,7 @@ class RQTransformerModelArgs(BaseModel):
     fast_attention_qkv_bias: bool = False
     depthwise_wte: Optional[bool] = Field(default=None)
     depthwise_output: Optional[bool] = Field(default=None)
+    duplicate_code_0: Optional[bool] = Field(default=True)
 
     # meta
     use_gradient_checkpointing: bool = False
@@ -100,6 +101,9 @@ class RQTransformer(nn.Module):
         self.model_type = model_type
 
         self.embeddings = nn.Embedding(config.vocab_size, config.dim)
+        self.max_fast_seqlen = config.num_codebooks - (
+            0 if config.duplicate_code_0 else 1
+        )
         self.codebook_embeddings = nn.Embedding(
             config.codebook_size * config.num_codebooks, config.dim
         )
@@ -132,24 +136,27 @@ class RQTransformer(nn.Module):
         ]
         self.fast_norm = nn.RMSNorm(config.fast_dim, eps=config.norm_eps)
         fast_output_dim = (
-            config.codebook_size * config.num_codebooks
+            config.codebook_size * self.max_fast_seqlen
             if config.depthwise_output
             else config.codebook_size
         )
         self.fast_output = nn.Linear(config.fast_dim, fast_output_dim, bias=False)
+        self._semantic_offset = mx.arange(
+            0,
+            self.config.num_codebooks * self.config.codebook_size,
+            self.config.codebook_size,
+        )[:, mx.newaxis]
 
     def embed(self, x: mx.array) -> mx.array:
         semantic_tokens = x[:, 0, :]
         semantic_embeds = self.embeddings(semantic_tokens)[:, mx.newaxis, :]
 
-        codebook_tokens = (
-            x[:, 1:, :]
-            + mx.arange(
-                0,
-                self.config.num_codebooks * self.config.codebook_size,
-                self.config.codebook_size,
-            )[:, mx.newaxis]
+        offset = (
+            self._semantic_offset
+            if self.config.duplicate_code_0
+            else self._semantic_offset[1:, :]
         )
+        codebook_tokens = x[:, 1:, :] + offset
         codebook_embeds = self.codebook_embeddings(codebook_tokens)
 
         if self.token_config.semantic_end_id is not None:

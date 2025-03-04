@@ -2700,7 +2700,7 @@ dev = [{ name = "ipykernel", specifier = ">=6.29.5" }]
 
 [[package]]
 name = "smoltts-mlx"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "mlx_inference" }
 dependencies = [
     { name = "fastapi" },
