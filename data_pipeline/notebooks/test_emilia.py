@@ -29,7 +29,7 @@ def main():
     os.makedirs(dataset_dir_base, exist_ok=True)
     NUM_SHARDS = 100
     # NUM_SHARDS = 1
-    SKIP_SHARDS = 0
+    SKIP_SHARDS = 100
 
     for idx, chunk in enumerate(
         chunked(range(SKIP_SHARDS, NUM_SHARDS + SKIP_SHARDS), CHUNK_SIZE)
@@ -59,7 +59,9 @@ def main():
         dataset = dataset.map(
             encode_batch, batched=True, batch_size=24, remove_columns=["mp3"]
         )
-        save_path = os.path.join(dataset_dir_base, f"shard_{chunk[0]}_{chunk[-1]}")
+        save_path = os.path.join(
+            dataset_dir_base, f"shard_{chunk[0]:04d}_{chunk[-1]:04d}"
+        )
         dataset.save_to_disk(save_path)
         print(f"💾 Saved chunk {idx + 1} to {save_path}")
 
