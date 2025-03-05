@@ -1,4 +1,4 @@
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from data_pipeline.utils.codec import MimiCodec
 from dotenv import load_dotenv
 import os
@@ -27,9 +27,16 @@ def main():
     dataset_dir_base = os.path.expanduser("~/local_datasets/emilia_chunks")
 
     os.makedirs(dataset_dir_base, exist_ok=True)
+    NUM_SHARDS = 100
+    # NUM_SHARDS = 1
+    SKIP_SHARDS = 0
 
-    for idx, chunk in enumerate(chunked(range(500), CHUNK_SIZE)):
-        print(f"\n🟢 Processing chunk {idx + 1}/{(500 // CHUNK_SIZE) + 1}: {chunk}")
+    for idx, chunk in enumerate(
+        chunked(range(SKIP_SHARDS, NUM_SHARDS + SKIP_SHARDS), CHUNK_SIZE)
+    ):
+        print(
+            f"\n🟢 Processing chunk {idx + 1}/{(NUM_SHARDS // CHUNK_SIZE) + 1}: {chunk}"
+        )
 
         paths = [f"Emilia/EN/EN-B00{i:04d}.tar" for i in chunk]
 
@@ -41,6 +48,7 @@ def main():
             token=os.getenv("HUGGINGFACE_TOKEN"),
         )
         dataset = dataset.with_format("pt")
+        # dataset = dataset.take(500)
 
         def encode_batch(batch):
             audio = [a["array"] for a in batch["mp3"]]
@@ -48,9 +56,11 @@ def main():
             return {"codes": encoded}
 
         # Process & Save
-        dataset.map(encode_batch, batched=True, batch_size=24)
-        save_path = os.path.join(dataset_dir_base, f"chunk_{idx + 1}.pt")
-        torch.save(dataset, save_path)
+        dataset = dataset.map(
+            encode_batch, batched=True, batch_size=24, remove_columns=["mp3"]
+        )
+        save_path = os.path.join(dataset_dir_base, f"shard_{chunk[0]}_{chunk[-1]}")
+        dataset.save_to_disk(save_path)
         print(f"💾 Saved chunk {idx + 1} to {save_path}")
 
         # Nuke cache
