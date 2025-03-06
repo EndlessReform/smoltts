@@ -1,3 +1,4 @@
+import argparse
 from datasets import load_dataset, Dataset
 from data_pipeline.utils.codec import MimiCodec
 from dotenv import load_dotenv
@@ -20,16 +21,34 @@ def chunked(iterable, size):
         yield chunk
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Shard processing script")
+    parser.add_argument(
+        "--num-shards",
+        type=int,
+        default=100,
+        help="Total number of shards (default: 100)",
+    )
+    parser.add_argument(
+        "--skip-shards",
+        type=int,
+        default=0,
+        help="Number of shards to skip (default: 0)",
+    )
+    return parser.parse_args()
+
+
 def main():
     load_dotenv()
+    args = parse_args()
 
     codec = MimiCodec()
     dataset_dir_base = os.path.expanduser("~/local_datasets/emilia_chunks")
 
     os.makedirs(dataset_dir_base, exist_ok=True)
-    NUM_SHARDS = 100
+    NUM_SHARDS = args.num_shards
     # NUM_SHARDS = 1
-    SKIP_SHARDS = 100
+    SKIP_SHARDS = args.skip_shards
 
     for idx, chunk in enumerate(
         chunked(range(SKIP_SHARDS, NUM_SHARDS + SKIP_SHARDS), CHUNK_SIZE)
@@ -70,6 +89,10 @@ def main():
             "~/.cache/huggingface/datasets/amphion___emilia-dataset"
         )
         shutil.rmtree(dataset_dir, ignore_errors=True)
+        hub_dir = os.path.expanduser(
+            "~/.cache/huggingface/hub/datasets--amphion--Emilia-Dataset"
+        )
+        shutil.rmtree(hub_dir, ignore_errors=True)
         print(f"🔥 Cleared cache for chunk {idx + 1}")
 
     print("✅ ALL CHUNKS PROCESSED.")
