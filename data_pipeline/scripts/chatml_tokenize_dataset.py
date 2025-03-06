@@ -80,22 +80,22 @@ class SyspromptEncoder:
             # TODO handle arbitrary token length
             return 0
 
-    def add_sysprompt(self, row: Dict):
+    def add_sysprompt(
+        self, ground_truth: torch.Tensor, speaker_id: str
+    ) -> torch.Tensor:
         if self.dataset_config.speaker.strategy == "omit":
-            return {}
+            return ground_truth
         else:
             if self.default_sysprompt is not None:
                 speaker_entry = self.default_sysprompt
             elif self.speaker_cache is not None:
-                speaker_entry = self.speaker_cache[row["speaker_id"]]
+                speaker_entry = self.speaker_cache[speaker_id]
             else:
                 raise ValueError(
                     f"Must have default syprompt or IDs, current strategy: {self.dataset_config.speaker.strategy}"
                 )
 
-            return {
-                "ground_truth": torch.cat([speaker_entry, row["ground_truth"]], dim=1),
-            }
+            return torch.cat([speaker_entry, ground_truth], dim=1)
 
 
 def tts_tokenize_row(
@@ -166,6 +166,11 @@ def pack_utterances(batch: Dict, sysprompt_encoder: SyspromptEncoder):
 
         packed_bins += bins
         packed_ids += [speaker] * len(bins)
+
+    packed_bins = [
+        sysprompt_encoder.add_sysprompt(seq, speaker_id)
+        for seq, speaker_id in zip(packed_bins, packed_ids)
+    ]
 
     return {"ground_truth": packed_bins, "speaker_id": packed_ids}
 
@@ -239,12 +244,12 @@ def main():
             remove_columns=dataset["train"].column_names,
         )
 
-    print("Adding system prompt")
-    dataset = dataset.map(sysprompt_encoder.add_sysprompt, num_proc=NUM_PROC)
-    print("Causally shifting tokens, masking text-only")
-    dataset = dataset.map(
-        causal_shift_row, num_proc=NUM_PROC, remove_columns=["ground_truth"]
-    )
+    # print("Adding system prompt")
+    # dataset = dataset.map(sysprompt_encoder.add_sysprompt, num_proc=NUM_PROC)
+    # print("Causally shifting tokens, masking text-only")
+    # dataset = dataset.map(
+    #     causal_shift_row, num_proc=NUM_PROC, remove_columns=["ground_truth"]
+    # )
 
     dataset.save_to_disk(args.out_path)
 

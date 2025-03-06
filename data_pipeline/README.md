@@ -63,7 +63,7 @@ Create your config (ideally version-controlled in `data_pipeline/scripts/audio_t
 
 ```bash
 uv run data_pipeline/scripts/chatml_tokenize_dataset.py \
-    -c ./data_pipeline/scripts/audio_tokenizer_configs/project_gutenberg_v2.json \
+    -c ./data_pipeline/scripts/audio_tokenizer_configs/project_gutenberg_v2.1.json \
     -o ./datasets/byte-tokenized-pg-kokoro_v1
 ```
 

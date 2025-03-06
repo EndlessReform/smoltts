@@ -40,7 +40,7 @@ def collate_fn(
     """
     # TODO handle >8 codebooks
     height = codebook_size + (1 if duplicate_code_0 else 0)
-    max_input_len = max(item["tokens"].shape[1] for item in batch)
+    max_input_len = max(item["ground_truth"].shape[1] - 1 for item in batch)
 
     B = len(batch)
     # We'll create padded arrays:
@@ -53,9 +53,14 @@ def collate_fn(
     pad_mask = torch.ones(B, max_input_len)
 
     for i, item in enumerate(batch):
-        seq_len = item["tokens"].shape[1]
-        tokens[i, :, :seq_len] = item["tokens"]
-        labels[i, :, :seq_len] = item["labels"][:, :seq_len]
+        seq_len = item["ground_truth"].shape[1] - 1
+        tokens[i, :, :seq_len] = item["ground_truth"][:, :-1].clone()
+
+        label = item["ground_truth"][:, 1:]
+        text_only_mask = label[1:, :] == 0
+        label[1:, :][text_only_mask] = -100
+        labels[i, :, :seq_len] = label
+
         pad_mask[i, :seq_len] = False
 
     return {"tokens": tokens, "labels": labels, "pad_mask": pad_mask}
