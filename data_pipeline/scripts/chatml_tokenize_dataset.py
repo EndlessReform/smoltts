@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 from dotenv import load_dotenv
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict
 import json
 import os
 from pydantic import BaseModel, Field
@@ -182,6 +182,7 @@ parser.add_argument("-c", "--config", type=str, required=True)
 parser.add_argument(
     "-o", "--out-path", type=str, required=True, help="Local path of dataset output"
 )
+parser.add_argument("--shards", type=int)
 
 
 # TODO configure this
@@ -207,6 +208,10 @@ def main():
 
     print("Loaded dataset")
     dataset = dataset.with_format("torch")
+    if "text" in dataset["train"].column_names:
+        dataset = dataset.rename_column("text", "text_normalized")
+    if "speaker" in dataset["train"].column_names:
+        dataset = dataset.rename_column("speaker", "speaker_id")
 
     tokenizer = AutoTokenizer.from_pretrained(
         dataset_config.tokenization.tokenizer_path
@@ -220,29 +225,39 @@ def main():
         dataset_config=dataset_config, prompt_encoder=prompt_encoder
     )
 
-    print(f"Filtering rows above {dataset_config.audio.max_sample_secs}s")
-    dataset = dataset.filter(
-        lambda row: row["codes"].size(-1)
-        <= dataset_config.audio.frame_rate * dataset_config.audio.max_sample_secs,
-        num_proc=NUM_PROC,
-    )
+    n_shards = args.shards if args.shards is not None else 1
 
-    print("Tokenizing dataset")
-    dataset = dataset.map(
-        lambda row: tts_tokenize_row(row, prompt_encoder, dataset_config),
-        remove_columns="codes",
-        num_proc=NUM_PROC,
-    )
-
-    if dataset_config.packing is not None:
-        print("Packing sequence")
-        dataset = dataset.map(
-            lambda row: pack_utterances(row, sysprompt_encoder),
-            batched=True,
-            batch_size=dataset_config.packing.window_size,
+    full_dataset = dataset
+    completed = []
+    for i in range(n_shards):
+        dataset = full_dataset["train"].shard(n_shards, i)
+        print(f"Filtering rows above {dataset_config.audio.max_sample_secs}s")
+        dataset = dataset.filter(
+            lambda row: row["codes"].size(-1)
+            <= dataset_config.audio.frame_rate * dataset_config.audio.max_sample_secs,
             num_proc=NUM_PROC,
-            remove_columns=dataset["train"].column_names,
         )
+
+        print("Tokenizing dataset")
+        dataset = dataset.map(
+            lambda row: tts_tokenize_row(row, prompt_encoder, dataset_config),
+            remove_columns="codes",
+            num_proc=NUM_PROC,
+        )
+
+        if dataset_config.packing is not None:
+            print("Packing sequence")
+            dataset = dataset.map(
+                lambda row: pack_utterances(row, sysprompt_encoder),
+                batched=True,
+                batch_size=dataset_config.packing.window_size,
+                num_proc=NUM_PROC,
+                remove_columns=dataset.column_names,
+            )
+
+        completed.append(dataset)
+
+    dataset = concatenate_datasets(completed)
 
     # print("Adding system prompt")
     # dataset = dataset.map(sysprompt_encoder.add_sysprompt, num_proc=NUM_PROC)
@@ -250,8 +265,9 @@ def main():
     # dataset = dataset.map(
     #     causal_shift_row, num_proc=NUM_PROC, remove_columns=["ground_truth"]
     # )
+    dataset = DatasetDict({"train": dataset})
 
-    dataset.save_to_disk(args.out_path)
+    dataset.save_to_disk(args.out_path, max_shard_size="5GB")
 
 
 if __name__ == "__main__":

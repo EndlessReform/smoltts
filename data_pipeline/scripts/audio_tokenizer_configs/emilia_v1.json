@@ -1,28 +1,16 @@
 {
-    "dataset_id": "jkeisling/projectgutenberg-kokoro_v1-mimi",
+    "dataset_id": "jkeisling/emilia_en_mimi",
     "speaker": {
-        "strategy": "id_token",
-        "speaker_names": [
-            "af_heart",
-            "af_bella",
-            "af_nova",
-            "af_sky",
-            "af_sarah",
-            "am_michael",
-            "am_puck",
-            "am_liam",
-            "bf_emma",
-            "bf_isabella",
-            "bm_fable"
-        ]
+        "strategy": "omit"
     },
     "tokenization": {
         "tokenizer_path": "inits/smoltts_byte_kokoro",
-        "strategy": "bytelevel"
+        "strategy": "bytelevel",
+        "duplicate_code_0": false
     },
     "audio": {
         "frame_rate": 12.5,
-        "max_sample_secs": 15.0
+        "max_sample_secs": 30.0
     },
     "packing": {
         "max_sequence_length": 768,
