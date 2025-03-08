@@ -218,6 +218,7 @@ def train(
                 scheduler.step()
                 optimizer.zero_grad()
                 accumulation_counter = 0
+                torch.cuda.empty_cache()
 
             # Get current learning rate (even if not updated, it stays the same)
             current_lr = scheduler.get_last_lr()[0]

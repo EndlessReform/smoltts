@@ -113,7 +113,7 @@ class CheckpointManager:
             k.replace("_orig_mod.", ""): v for k, v in state.model.state_dict().items()
         }
 
-        checkpoint_path = self.run_dir / f"step_{state.global_step}.pt"
+        checkpoint_path = self.run_dir / f"step_{state.global_step:06d}.pt"
         torch.save(
             {
                 "epoch": state.start_epoch,

@@ -10,8 +10,8 @@
     "num_workers": 4,
     "gradient_clip": 1.0,
     "learning_rate": 7e-4,
-    "lr_start": 1.5e-3,
-    "lr_warmup_steps": 5000,
+    "lr_start": 7e-4,
+    "lr_warmup_steps": 8,
     "weight_decay": 0.01,
     "betas": [
         0.90,
@@ -23,5 +23,5 @@
     "max_sequence_length": 768,
     "use_bf16": true,
     "use_wandb": true,
-    "use_pretrained": false
+    "use_pretrained": true
 }

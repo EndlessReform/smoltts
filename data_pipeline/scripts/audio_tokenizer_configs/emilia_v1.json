@@ -10,11 +10,11 @@
     },
     "audio": {
         "frame_rate": 12.5,
-        "max_sample_secs": 30.0
+        "max_sample_secs": 17.5
     },
     "packing": {
-        "max_sequence_length": 768,
-        "max_items_per_pack": 5,
+        "max_sequence_length": 640,
+        "max_items_per_pack": 4,
         "window_size": 1600
     }
 }

@@ -398,7 +398,6 @@ class RQTransformer(BaseTransformer):
 
         self.apply(self._init_weights)
 
-    @torch.compile
     def forward(
         self,
         inp: Tensor,
