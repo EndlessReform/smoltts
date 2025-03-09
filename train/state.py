@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, List
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
@@ -10,8 +10,8 @@ from train.config import TrainingConfig
 
 class TrainingState(NamedTuple):
     model: RQTransformer
-    optimizer: Optional[Optimizer]
-    scheduler: Optional[LRScheduler]
+    optimizer: Optional[List[Optimizer]]
+    scheduler: Optional[List[LRScheduler]]
     start_epoch: int
     global_step: int
 
@@ -119,12 +119,20 @@ class CheckpointManager:
                 "epoch": state.start_epoch,
                 "global_step": state.global_step,
                 "model_state_dict": state_dict,
-                "optimizer_state_dict": (
-                    state.optimizer.state_dict() if state.optimizer else None
-                ),
-                "scheduler_state_dict": (
-                    state.scheduler.state_dict() if state.scheduler else None
-                ),
+                "optimizer_state_dicts": [
+                    (optimizer.state_dict() if state.optimizer else None)
+                    for optimizer in state.optimizer
+                ]
+                if state.optimizer is not None
+                else None,
+                "scheduler_state_dicts": [
+                    (
+                        scheduler.state_dict() if state.scheduler else None
+                        for scheduler in state.scheduler
+                    )
+                ]
+                if state.scheduler is not None
+                else None,
                 "config": config.model_dump(),
             },
             checkpoint_path,

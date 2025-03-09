@@ -6,6 +6,7 @@ from train.data import load_splits
 from train.optim import setup_training
 from train.state import CheckpointManager
 from train.trainer import train
+import torch.distributed as dist
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -37,7 +38,10 @@ def main():
         state = checkpoint_manager.init_model(config, device)
 
     # Setup optimizer and scheduler
-    optimizer, scheduler = setup_training(state.model, config, state.global_step)
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    dist.init_process_group(backend="nccl", world_size=1, rank=0)
+    optimizers, schedulers = setup_training(state.model, config, state.global_step)
 
     # Environment setup
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -50,8 +54,8 @@ def main():
         val_ds,
         config,
         device,
-        optimizer,
-        scheduler,
+        optimizers,
+        schedulers,
         checkpoint_manager,
         state.start_epoch,
         state.global_step,

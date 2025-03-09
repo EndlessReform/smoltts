@@ -3,6 +3,21 @@ from pydantic import BaseModel
 from typing import Tuple, Optional
 
 
+class MuonSettings(BaseModel):
+    learning_rate: float = 1e-2
+    momentum: float = 0.95
+
+
+class OptimizerSettings(BaseModel):
+    learning_rate: float = 1e-4
+    lr_start: float = 1e-3
+    lr_warmup_steps: int = 3000
+    weight_decay: float = 0.0
+    betas: Tuple[float, float] = (0.9, 0.95)
+    eps: float = 1e-5
+    muon: Optional[MuonSettings] = None
+
+
 class TrainingConfig(BaseModel):
     # Core paths and identifiers
     project_name: str = "ljspeech_train"
@@ -19,12 +34,7 @@ class TrainingConfig(BaseModel):
     accumulate_steps: int = 1
 
     # Optimizer settings
-    learning_rate: float = 1e-4
-    lr_start: float = 1e-3
-    lr_warmup_steps: int = 3000
-    weight_decay: float = 0.0
-    betas: Tuple[float, float] = (0.9, 0.95)
-    eps: float = 1e-5
+    optimizer: OptimizerSettings
 
     # Validation & Checkpointing
     val_every_n_steps: int = 100

@@ -4,4 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "muon",
+]
+
+[tool.uv.sources]
+muon = { git = "https://github.com/KellerJordan/Muon" }

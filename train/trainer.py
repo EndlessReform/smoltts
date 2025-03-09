@@ -172,8 +172,8 @@ def train(
     val_ds: Dataset,
     config: TrainingConfig,
     device: torch.device,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    optimizers: List[torch.optim.Optimizer],
+    schedulers: List[torch.optim.lr_scheduler.LRScheduler],
     checkpoint_manager: CheckpointManager,
     start_epoch: int = 0,
     global_step: int = 0,
@@ -193,7 +193,8 @@ def train(
 
     # Initialize accumulation counter and zero the gradients initially.
     accumulation_counter = 0
-    optimizer.zero_grad()
+    for optimizer in optimizers:
+        optimizer.zero_grad()
 
     for epoch in range(start_epoch, config.max_epochs):
         model.train()
@@ -214,28 +215,35 @@ def train(
                     torch.nn.utils.clip_grad_norm_(
                         model.parameters(), config.gradient_clip
                     )
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad()
+                for optimizer in optimizers:
+                    optimizer.step()
+
+                for scheduler in schedulers:
+                    scheduler.step()
+
+                for optimizer in optimizers:
+                    optimizer.zero_grad()
                 accumulation_counter = 0
                 torch.cuda.empty_cache()
 
             # Get current learning rate (even if not updated, it stays the same)
-            current_lr = scheduler.get_last_lr()[0]
+            current_lr_display = []
+            for scheduler in schedulers:
+                current_lr_display.append(f"{scheduler.get_last_lr()[0]:.2e}")
 
             if config.use_wandb:
                 metrics = {
                     "train/loss": float(step_output.loss),
                     "train/base_loss": float(step_output.base_loss),
                     "train/semantic_loss": float(step_output.semantic_loss),
-                    "train/learning_rate": current_lr,
+                    "train/learning_rate": current_lr_display,
                     "epoch": epoch,
                 }
                 wandb.log(metrics, step=global_step)
 
             progress_bar.set_postfix(
                 loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
-                lr=f"{current_lr:.2e}",
+                lr=current_lr_display,
             )
 
             if (
@@ -261,8 +269,8 @@ def train(
                 checkpoint_manager.save(
                     TrainingState(
                         model=model,
-                        optimizer=optimizer,
-                        scheduler=scheduler,
+                        optimizer=optimizers,
+                        scheduler=schedulers,
                         start_epoch=epoch,
                         global_step=global_step,
                     ),
@@ -274,9 +282,9 @@ def train(
     checkpoint_manager.save(
         TrainingState(
             model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            start_epoch=epoch,
+            optimizer=optimizers,
+            scheduler=schedulers,
+            start_epoch=config.max_epochs - 1,
             global_step=global_step,
         ),
         config,

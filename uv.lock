@@ -1277,6 +1277,11 @@ wheels = [
 ]
 
 [[package]]
+name = "muon"
+version = "0.1.0"
+source = { git = "https://github.com/KellerJordan/Muon#6973dd5abf6d6408d178988202bc545375319373" }
+
+[[package]]
 name = "nest-asyncio"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2982,6 +2987,12 @@ wheels = [
 name = "train"
 version = "0.1.0"
 source = { virtual = "train" }
+dependencies = [
+    { name = "muon" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "muon", git = "https://github.com/KellerJordan/Muon" }]
 
 [[package]]
 name = "traitlets"
