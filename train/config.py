@@ -1,6 +1,6 @@
 import json
 from pydantic import BaseModel
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 class TrainingConfig(BaseModel):
@@ -16,6 +16,7 @@ class TrainingConfig(BaseModel):
     max_epochs: int = 10
     num_workers: int = 4
     gradient_clip: float = 1.0
+    accumulate_steps: int = 1
 
     # Optimizer settings
     learning_rate: float = 1e-4

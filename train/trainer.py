@@ -63,35 +63,31 @@ def compute_losses(
 def train_step(
     model: torch.nn.Module,
     batch: dict,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: torch.device,
-    gradient_clip: float = 0.0,
+    accumulate_steps: int = 1,  # New parameter for loss scaling
 ) -> TrainStepOutput:
-    """Single training step"""
+    """
+    Executes a forward pass and backward pass (with loss scaling for gradient accumulation).
+    Does NOT perform optimizer.step() or gradient clipping here.
+    """
     tokens = batch["tokens"].to(device)
     labels = batch["labels"].to(device)
     pad_mask = batch["pad_mask"].to(device)
 
-    # time.sleep(0.02)
     outputs = model(inp=tokens, key_padding_mask=pad_mask)
-    # time.sleep(0.15)
     base_loss, semantic_loss, _ = compute_losses(outputs, labels)
-    loss = base_loss + semantic_loss
 
-    optimizer.zero_grad()
-    loss.backward()
-    # time.sleep(0.05)
-    if gradient_clip > 0:
-        torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-    optimizer.step()
-    scheduler.step()
+    # Compute total loss and scale it for accumulation
+    total_loss = base_loss + semantic_loss
+    scaled_loss = total_loss / accumulate_steps
+    scaled_loss.backward()
 
+    # Return the unscaled losses for logging purposes
     return TrainStepOutput(
-        loss=loss,
+        loss=total_loss,
         base_loss=base_loss.item(),
         semantic_loss=semantic_loss.item(),
-        lr=scheduler.get_last_lr()[0],
+        lr=0.0,  # Will be updated in the training loop after optimizer.step()
     )
 
 
@@ -183,7 +179,6 @@ def train(
     global_step: int = 0,
 ):
     pad_id = model.tokenizer.pad_token_id
-    """Main training loop"""
     if config.use_wandb:
         wandb.init(project=config.project_name, resume="allow")
         wandb.config.update(config.model_dump())
@@ -196,41 +191,53 @@ def train(
         duplicate_code_0=model.config.duplicate_code_0,
     )
 
-    # Add right before the training loop
-    WARMUP_STEPS = 30  # Warmup iterations
-    PROFILE_STEPS = 10  # Profile these many steps
-    TOTAL_STEPS = WARMUP_STEPS + PROFILE_STEPS
+    # Initialize accumulation counter and zero the gradients initially.
+    accumulation_counter = 0
+    optimizer.zero_grad()
 
     for epoch in range(start_epoch, config.max_epochs):
         model.train()
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
 
         for batch in progress_bar:
+            # Forward and backward pass (loss scaled inside train_step)
             step_output = train_step(
-                model, batch, optimizer, scheduler, device, config.gradient_clip
+                model, batch, device=device, accumulate_steps=config.accumulate_steps
             )
 
+            accumulation_counter += 1
+
+            # Only perform an optimizer step when enough gradients have accumulated.
+            if accumulation_counter == config.accumulate_steps:
+                # Optionally clip gradients
+                if config.gradient_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), config.gradient_clip
+                    )
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
+                accumulation_counter = 0
+                torch.cuda.empty_cache()
+
+            # Get current learning rate (even if not updated, it stays the same)
+            current_lr = scheduler.get_last_lr()[0]
+
             if config.use_wandb:
-                # Log overall metrics
                 metrics = {
                     "train/loss": float(step_output.loss),
                     "train/base_loss": float(step_output.base_loss),
                     "train/semantic_loss": float(step_output.semantic_loss),
-                    "train/learning_rate": step_output.lr,
+                    "train/learning_rate": current_lr,
                     "epoch": epoch,
                 }
-
                 wandb.log(metrics, step=global_step)
 
             progress_bar.set_postfix(
                 loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
-                lr=f"{step_output.lr:.2e}",
+                lr=f"{current_lr:.2e}",
             )
-            # if global_step >= TOTAL_STEPS:
-            #     print("\nProfile run complete")
-            #     sys.exit(0)
 
-            # Validation
             if (
                 global_step % config.val_every_n_steps == 0
                 and config.use_wandb
@@ -263,6 +270,7 @@ def train(
                 )
 
             global_step += 1
+
     checkpoint_manager.save(
         TrainingState(
             model=model,

@@ -23,7 +23,7 @@
     },
     "audio": {
         "frame_rate": 12.5,
-        "max_sample_secs": 15.0
+        "max_sample_secs": 20.0
     },
     "packing": {
         "max_sequence_length": 768,
