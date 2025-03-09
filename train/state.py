@@ -32,36 +32,36 @@ class CheckpointManager:
         checkpoint = torch.load(checkpoint_path, map_location=device)
         checkpoint_config = TrainingConfig(**checkpoint["config"])
 
-        # Check for config mismatches that would affect optimizer/scheduler
-        optimizer_keys = ["learning_rate", "weight_decay", "betas", "eps"]
-        scheduler_keys = ["lr_start", "lr_warmup_steps"]
+        # # Check for config mismatches that would affect optimizer/scheduler
+        # optimizer_keys = ["learning_rate", "weight_decay", "betas", "eps"]
+        # scheduler_keys = ["lr_start", "lr_warmup_steps"]
 
-        optimizer_changed = any(
-            getattr(config, key) != getattr(checkpoint_config, key)
-            for key in optimizer_keys
-        )
-        scheduler_changed = any(
-            getattr(config, key) != getattr(checkpoint_config, key)
-            for key in scheduler_keys
-        )
+        # optimizer_changed = any(
+        #     getattr(config, key) != getattr(checkpoint_config, key)
+        #     for key in optimizer_keys
+        # )
+        # scheduler_changed = any(
+        #     getattr(config, key) != getattr(checkpoint_config, key)
+        #     for key in scheduler_keys
+        # )
 
-        if optimizer_changed or scheduler_changed:
-            print("Detected changes in optimization parameters:")
-            if optimizer_changed:
-                print("Optimizer changes:")
-                for key in optimizer_keys:
-                    old_val = getattr(checkpoint_config, key)
-                    new_val = getattr(config, key)
-                    if old_val != new_val:
-                        print(f"  {key}: {old_val} -> {new_val}")
-            if scheduler_changed:
-                print("Scheduler changes:")
-                for key in scheduler_keys:
-                    old_val = getattr(checkpoint_config, key)
-                    new_val = getattr(config, key)
-                    if old_val != new_val:
-                        print(f"  {key}: {old_val} -> {new_val}")
-            print("Will reinitialize optimizer and scheduler with new settings")
+        # if optimizer_changed or scheduler_changed:
+        #     print("Detected changes in optimization parameters:")
+        #     if optimizer_changed:
+        #         print("Optimizer changes:")
+        #         for key in optimizer_keys:
+        #             old_val = getattr(checkpoint_config, key)
+        #             new_val = getattr(config, key)
+        #             if old_val != new_val:
+        #                 print(f"  {key}: {old_val} -> {new_val}")
+        #     if scheduler_changed:
+        #         print("Scheduler changes:")
+        #         for key in scheduler_keys:
+        #             old_val = getattr(checkpoint_config, key)
+        #             new_val = getattr(config, key)
+        #             if old_val != new_val:
+        #                 print(f"  {key}: {old_val} -> {new_val}")
+        #     print("Will reinitialize optimizer and scheduler with new settings")
 
         # Load model with original architecture but override weights
         model = RQTransformer.from_pretrained(
@@ -119,20 +119,6 @@ class CheckpointManager:
                 "epoch": state.start_epoch,
                 "global_step": state.global_step,
                 "model_state_dict": state_dict,
-                "optimizer_state_dicts": [
-                    (optimizer.state_dict() if state.optimizer else None)
-                    for optimizer in state.optimizer
-                ]
-                if state.optimizer is not None
-                else None,
-                "scheduler_state_dicts": [
-                    (
-                        scheduler.state_dict() if state.scheduler else None
-                        for scheduler in state.scheduler
-                    )
-                ]
-                if state.scheduler is not None
-                else None,
                 "config": config.model_dump(),
             },
             checkpoint_path,

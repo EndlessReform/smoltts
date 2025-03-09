@@ -4,23 +4,29 @@
     "init_folder": "../inits/smoltts_byte_kokoro_layer",
     "dataset_path": "../datasets/byte-tokenized-emilia-v1",
     "model_path": "pretrained_model",
-    "batch_size": 16,
-    "accumulate_steps": 8,
+    "batch_size": 24,
+    "accumulate_steps": 20,
     "max_epochs": 1,
     "num_workers": 4,
     "gradient_clip": 1.0,
-    "learning_rate": 7e-4,
-    "lr_start": 7e-4,
-    "lr_warmup_steps": 8,
-    "weight_decay": 0.01,
-    "betas": [
-        0.90,
-        0.95
-    ],
-    "eps": 1e-5,
+    "optimizer": {
+        "learning_rate": 7e-4,
+        "lr_start": 7e-4,
+        "lr_warmup_steps": 8,
+        "weight_decay": 0.01,
+        "betas": [
+            0.90,
+            0.95
+        ],
+        "eps": 1e-5,
+        "muon": {
+            "lr_start": 1e-2,
+            "momentum": 0.95
+        }
+    },
     "val_every_n_steps": 2000,
     "save_every_n_steps": 10000,
-    "max_sequence_length": 768,
+    "max_sequence_length": 704,
     "use_bf16": true,
     "use_wandb": true,
     "use_pretrained": true

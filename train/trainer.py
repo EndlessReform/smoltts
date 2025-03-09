@@ -141,8 +141,12 @@ def create_dataloaders(
     pad_id: int,
     duplicate_code_0: bool = True,
 ) -> tuple[DataLoader, DataLoader]:
+    # TODO handle >8 codebooks
     pad_collate_fn = partial(
-        collate_fn, semantic_pad_id=pad_id, duplicate_code_0=duplicate_code_0
+        collate_fn,
+        max_seq_len=config.max_sequence_length,
+        semantic_pad_id=pad_id,
+        duplicate_code_0=duplicate_code_0,
     )
 
     """Create train and validation dataloaders"""
@@ -208,6 +212,11 @@ def train(
 
             accumulation_counter += 1
 
+            # Get current learning rate (even if not updated, it stays the same)
+            current_lr_display = []
+            for scheduler in schedulers:
+                current_lr_display.append(f"{scheduler.get_last_lr()[0]:.2e}")
+
             # Only perform an optimizer step when enough gradients have accumulated.
             if accumulation_counter == config.accumulate_steps:
                 # Optionally clip gradients
@@ -224,27 +233,20 @@ def train(
                 for optimizer in optimizers:
                     optimizer.zero_grad()
                 accumulation_counter = 0
-                torch.cuda.empty_cache()
-
-            # Get current learning rate (even if not updated, it stays the same)
-            current_lr_display = []
-            for scheduler in schedulers:
-                current_lr_display.append(f"{scheduler.get_last_lr()[0]:.2e}")
-
-            if config.use_wandb:
-                metrics = {
-                    "train/loss": float(step_output.loss),
-                    "train/base_loss": float(step_output.base_loss),
-                    "train/semantic_loss": float(step_output.semantic_loss),
-                    "train/learning_rate": current_lr_display,
-                    "epoch": epoch,
-                }
-                wandb.log(metrics, step=global_step)
-
-            progress_bar.set_postfix(
-                loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
-                lr=current_lr_display,
-            )
+                if config.use_wandb:
+                    metrics = {
+                        "train/loss": float(step_output.loss),
+                        "train/base_loss": float(step_output.base_loss),
+                        "train/semantic_loss": float(step_output.semantic_loss),
+                        "train/learning_rate": current_lr_display,
+                        "epoch": epoch,
+                    }
+                    wandb.log(metrics, step=global_step // config.accumulate_steps)
+                    progress_bar.set_postfix(
+                        loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
+                        lr=current_lr_display,
+                    )
+                # torch.cuda.empty_cache()
 
             if (
                 global_step % config.val_every_n_steps == 0
