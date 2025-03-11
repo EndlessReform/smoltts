@@ -45,6 +45,7 @@ class TrainingConfig(BaseModel):
     use_bf16: bool = True
     use_wandb: bool = False
     use_pretrained: bool = True
+    compute_amortize_k: Optional[int] = None
 
 
 def load_config(path: str) -> TrainingConfig:

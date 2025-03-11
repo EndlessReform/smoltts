@@ -118,6 +118,7 @@ class RQTransformerModelArgs(BaseModelArgs):
 class TransformerForwardResult:
     token_logits: Tensor
     codebook_logits: Tensor
+    compute_amortize_mask: Optional[Tensor]
 
 
 @dataclass
@@ -402,6 +403,7 @@ class RQTransformer(BaseTransformer):
         self,
         inp: Tensor,
         key_padding_mask: Optional[Tensor] = None,
+        compute_amortize_k: Optional[int] = None,
     ) -> TransformerForwardResult:
         parent_result = super().forward(inp, key_padding_mask)
         token_logits = parent_result.logits
@@ -432,6 +434,20 @@ class RQTransformer(BaseTransformer):
             codebook_mask[: self.max_fast_seqlen] = False
 
         x_bs, x_len = x.size(0), x.size(1)
+
+        compute_mask = (
+            torch.rand(x_bs) < (1.0 / compute_amortize_k)
+            if compute_amortize_k is not None
+            else None
+        )
+
+        if compute_mask is not None:
+            # print(f"Compute mask: {compute_mask.shape}")
+            codebook_mask = codebook_mask | compute_mask.to(codebook_mask.device)
+            # n_masked = codebook_mask.sum().item()
+            # print(f"MASKED: {n_masked}")
+            # print(f"UNMASKED: {codebook_mask.numel() - codebook_mask.sum().item()}")
+
         indices = torch.arange(x_bs, device=x.device)[~codebook_mask]
         x = torch.index_select(x, 0, indices)
 
@@ -473,9 +489,17 @@ class RQTransformer(BaseTransformer):
             codebook_logits, "(b s) n d -> b s n d", b=b, s=s, n=self.max_fast_seqlen
         )
 
+        if compute_amortize_k is not None:
+            # Output:
+            compute_mask = rearrange(compute_mask, "(b s) -> b s", b=b, s=s)
+            # print(compute_mask.shape)
+            # print(compute_mask[0][0:10])
+            # raise ValueError("TODO")
+
         return TransformerForwardResult(
             token_logits=token_logits,
             codebook_logits=codebook_logits,
+            compute_amortize_mask=compute_mask,
         )
 
 

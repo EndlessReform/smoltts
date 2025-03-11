@@ -26,16 +26,18 @@ def compute_losses(
     outputs, labels: torch.Tensor, per_codebook_loss: bool = False
 ) -> tuple[torch.Tensor, torch.Tensor, List[float]]:
     """Compute base and semantic losses, plus individual codebook losses"""
+    IGNORE_INDEX = -100
     # Base loss computation remains the same
     base_loss = F.cross_entropy(
         outputs.token_logits.view(-1, outputs.token_logits.size(-1)),
         labels[:, 0, :].reshape(-1),
-        ignore_index=-100,
+        ignore_index=IGNORE_INDEX,
     )
 
     # Compute individual codebook losses
     n_codebooks = labels.shape[1] - 1  # Subtract 1 for the base tokens
     if per_codebook_loss:
+        # TODO handle compute amortization
         codebook_losses = []
 
         for i in range(n_codebooks):
@@ -46,7 +48,7 @@ def compute_losses(
             loss = F.cross_entropy(
                 current_logits.reshape(-1, current_logits.size(-1)),
                 current_labels.reshape(-1),
-                ignore_index=-100,
+                ignore_index=IGNORE_INDEX,
             )
             codebook_losses.append(loss.item())
     else:
@@ -54,17 +56,22 @@ def compute_losses(
 
     # Compute total semantic loss (same as before, just using einops)
     codebook_logits = rearrange(outputs.codebook_logits, "b s n d -> (b s n) d")
-    codebook_labels = rearrange(labels[:, 1:, :], "b n s -> (b s n)")
-    semantic_loss = F.cross_entropy(codebook_logits, codebook_labels, ignore_index=-100)
+
+    codebook_labels = labels[:, 1:, :]
+    if (ca_mask := outputs.compute_amortize_mask) is not None:
+        mask_3d = ca_mask.unsqueeze(1).expand(-1, codebook_labels.shape[1], -1)
+        codebook_labels[mask_3d] = IGNORE_INDEX
+
+    codebook_labels = rearrange(codebook_labels, "b n s -> (b s n)")
+    semantic_loss = F.cross_entropy(
+        codebook_logits, codebook_labels, ignore_index=IGNORE_INDEX
+    )
 
     return base_loss, semantic_loss, codebook_losses
 
 
 def train_step(
-    model: torch.nn.Module,
-    batch: dict,
-    device: torch.device,
-    accumulate_steps: int = 1,  # New parameter for loss scaling
+    model: torch.nn.Module, batch: dict, device: torch.device, config: TrainingConfig
 ) -> TrainStepOutput:
     """
     Executes a forward pass and backward pass (with loss scaling for gradient accumulation).
@@ -74,12 +81,16 @@ def train_step(
     labels = batch["labels"].to(device)
     pad_mask = batch["pad_mask"].to(device)
 
-    outputs = model(inp=tokens, key_padding_mask=pad_mask)
+    outputs = model(
+        inp=tokens,
+        key_padding_mask=pad_mask,
+        compute_amortize_k=config.compute_amortize_k,
+    )
     base_loss, semantic_loss, _ = compute_losses(outputs, labels)
 
     # Compute total loss and scale it for accumulation
     total_loss = base_loss + semantic_loss
-    scaled_loss = total_loss / accumulate_steps
+    scaled_loss = total_loss / config.accumulate_steps
     scaled_loss.backward()
 
     # Return the unscaled losses for logging purposes
@@ -206,9 +217,7 @@ def train(
 
         for batch in progress_bar:
             # Forward and backward pass (loss scaled inside train_step)
-            step_output = train_step(
-                model, batch, device=device, accumulate_steps=config.accumulate_steps
-            )
+            step_output = train_step(model, batch, device=device, config=config)
 
             accumulation_counter += 1
 
@@ -241,11 +250,11 @@ def train(
                         "train/learning_rate": current_lr_display,
                         "epoch": epoch,
                     }
-                    wandb.log(metrics, step=global_step // config.accumulate_steps)
-                    progress_bar.set_postfix(
-                        loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
-                        lr=current_lr_display,
-                    )
+                    wandb.log(metrics, step=global_step)
+                progress_bar.set_postfix(
+                    loss=f"lm={step_output.base_loss:.4f},codes={step_output.semantic_loss:.4f}",
+                    lr=current_lr_display,
+                )
                 # torch.cuda.empty_cache()
 
             if (
