@@ -41,6 +41,7 @@ class CSMModel(nn.Module):
         self, inputs: mx.array, prompt_masks: mx.array, cache: Optional[List[Any]]
     ) -> Tuple[mx.array, mx.array]:
         x = self._embed_tokens(inputs, prompt_masks)
+        print(x.shape)
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
         for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
@@ -54,7 +55,7 @@ class CSMModel(nn.Module):
         return self.codebook_embeddings(tokens + codebook * self.config.codebook_size)
 
     def _embed_tokens(self, inputs: mx.array, masks: mx.array) -> mx.array:
-        text_embeds = self.embeddings(inputs[:, :, -1])[mx.newaxis, :, :]
+        text_embeds = self.embeddings(inputs[:, :, -1])[:, :, mx.newaxis, :]
         audio_tokens = inputs[:, :, :-1] + mx.arange(
             0,
             self.config.num_codebooks * self.config.codebook_size,
@@ -62,6 +63,6 @@ class CSMModel(nn.Module):
         )
         audio_embeds = self.codebook_embeddings(audio_tokens)
 
-        embeds = mx.concat([text_embeds, audio_embeds], axis=-1)
-        embeds = embeds * masks
-        return mx.sum(embeds, axis=-1)
+        embeds = mx.concat([audio_embeds, text_embeds], axis=-2)
+        embeds = embeds * masks[:, :, :, mx.newaxis]
+        return mx.sum(embeds, axis=-2)

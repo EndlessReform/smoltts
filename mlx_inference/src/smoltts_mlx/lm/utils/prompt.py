@@ -82,14 +82,15 @@ class CSMPromptEncoder:
         text_frame = mx.concat(
             [mx.zeros([tokens.shape[0], self.depth], dtype=mx.int64), tokens], axis=-1
         )
-        text_frame_mask = text_frame != 0
+        text_frame_mask = mx.zeros_like(text_frame)
+        text_frame_mask[:, -1] = True
         return (text_frame, text_frame_mask)
 
     def tokenize_audio(self, mimi_codes: mx.array):
         assert mimi_codes.ndim == 2
         mimi_codes = mimi_codes.transpose(0, 1)
         eos_frame = mx.zeros([mimi_codes.shape[0], 1])
-        # TODO is this right?
+        # TODO is this right? check this later
         audio_frame = mx.concat([mimi_codes, eos_frame], axis=0)
         audio_frame = mx.concat(
             [audio_frame, mx.zeros([audio_frame.shape[0], 1])], axis=1

@@ -176,6 +176,8 @@ class RQTransformer(nn.Module):
         cache: Optional[List[Any]] = None,
     ) -> Tuple[mx.array, mx.array]:
         x = self.embed(inputs)
+        mx.save("first_state_mlx.npy", x)
+        raise ValueError("Embeddings tested")
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
         for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
@@ -233,6 +235,7 @@ class TransformerBlock(nn.Module):
         self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
     ) -> mx.array:
         h = x + self.attention(self.attention_norm(x), mask=mask, cache=cache)
+        mx.save("first_block_attn_mlx.npy", x)
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 

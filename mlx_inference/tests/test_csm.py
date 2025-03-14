@@ -46,12 +46,9 @@ def main():
     curr_tokens = curr_tokens[mx.newaxis, :, :]
     curr_tokens_mask = curr_tokens_mask[mx.newaxis, :, :]
 
-    raise ValueError("TODO")
+    (code0_logits, x) = model.forward_generate(curr_tokens, curr_tokens_mask, None)
+    print("Generated")
 
-    # Initialize cache
-    prompt = mx.zeros([1, 9, 32], mx.uint32)
-    trace_file = "mlx_trace.gputrace"
-    mx.metal.start_capture(trace_file)
     # prompt_encoder = PromptEncoder.from_model(tokenizer, model)
     # sysprompt = prompt_encoder.encode_text_turn("system", f"<|speaker:{args.speaker}|>")
     # user_prompt = prompt_encoder.encode_text_turn("user", args.text)
@@ -60,11 +57,6 @@ def main():
     # prompt = mx.concat([sysprompt, user_prompt, assistant_prefix], axis=1)[
     #     mx.newaxis, :, :
     # ]
-    generator = SingleBatchGenerator(model, prompt, audio_only=True)
-    next(generator)
-    next(generator)
-
-    mx.metal.stop_capture()
 
 
 if __name__ == "__main__":
