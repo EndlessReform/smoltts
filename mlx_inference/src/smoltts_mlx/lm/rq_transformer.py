@@ -176,14 +176,13 @@ class RQTransformer(nn.Module):
         cache: Optional[List[Any]] = None,
     ) -> Tuple[mx.array, mx.array]:
         x = self.embed(inputs)
-        mx.save("first_state_mlx.npy", x)
-        raise ValueError("Embeddings tested")
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
         for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
             x = layer(x, mask=mask, cache=layer_cache)
 
         x = x[:, -1, :]  # Only take the last token for generation
+        raise ValueError("Embeddings tested")
         slow_out = self.norm(x)
         if self.output is not None:
             token_logits = self.output(slow_out)
@@ -234,8 +233,15 @@ class TransformerBlock(nn.Module):
     def __call__(
         self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
     ) -> mx.array:
-        h = x + self.attention(self.attention_norm(x), mask=mask, cache=cache)
-        mx.save("first_block_attn_mlx.npy", x)
+        mx.save("first_attn_input_mlx.npy", x)
+        h = self.attention_norm(x)
+        mx.save("first_attn_norm_weight_mlx.npy", self.attention_norm.weight)
+        mx.save("first_attn_norm_mlx.npy", h)
+        # TODO this is wrong
+        h = mx.load("first_attn_norm.npy")
+        h = x + self.attention(h, mask=mask, cache=cache)
+        mx.save("first_attn_layer_mlx.npy", h)
+        raise ValueError("first hidden")
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 
@@ -284,6 +290,7 @@ class Attention(nn.Module):
         kv_size = self.n_local_heads * self.head_dim
         raw = qkv.split([self.dim, self.dim + kv_size], axis=-1)
         q, k, v = raw
+        mx.save("first_attn_q_mlx.npy", q)
         q = q.reshape((bsz, seqlen, self.n_head, self.head_dim))
         k = k.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
         v = v.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))

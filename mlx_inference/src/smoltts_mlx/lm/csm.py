@@ -44,10 +44,13 @@ class CSMModel(nn.Module):
         print(x.shape)
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
+        x = mx.load("first_state.npy")
+
         for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
             x = layer(x, mask=mask, cache=layer_cache)
 
         x = x[:, -1, :]  # take last token for generation
+        mx.save("final_x_mlx.npy", x.astype(mx.float32))
         c0_logits = self.codebook0_head(x)
         return (c0_logits, x)
 
