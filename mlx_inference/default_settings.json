@@ -1,5 +1,5 @@
 {
-    "checkpoint_dir": "../inits/emilia/small",
+    "model_id": "jkeisling/smoltts_v0",
     "generation": {
         "default_temp": 0.4,
         "default_fast_temp": 0.5,
