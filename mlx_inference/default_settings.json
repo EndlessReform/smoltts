@@ -1,5 +1,5 @@
 {
-    "checkpoint_dir": "../inits/emilia/v1",
+    "checkpoint_dir": "../inits/emilia/small",
     "generation": {
         "default_temp": 0.4,
         "default_fast_temp": 0.5,
