@@ -44,8 +44,6 @@ class CSMModel(nn.Module):
         print(x.shape)
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
-        x = mx.load("first_state.npy")
-
         for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
             x = layer(x, mask=mask, cache=layer_cache)
 

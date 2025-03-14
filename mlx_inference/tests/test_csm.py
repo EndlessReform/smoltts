@@ -33,7 +33,7 @@ def main():
     model = CSMModel(config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
     model.load_weights(model_path, strict=True)
-    # model = model.apply(lambda p: p.astype(mx.float32))
+    model = model.apply(lambda p: p.astype(mx.float32))
     mx.eval(model.parameters())
     model.eval()
     load_end_time = time.time()

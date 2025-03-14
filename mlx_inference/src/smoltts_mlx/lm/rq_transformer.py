@@ -1,10 +1,19 @@
 import mlx.core as mx
 import mlx.nn as nn
+from mlx_lm.models.rope_utils import Llama3RoPE
 from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
 from typing import Any, Optional, List, Tuple
 
 from smoltts_mlx.lm.config import ModelType
+
+
+class RopeScaling(BaseModel):
+    factor: float
+    high_freq_factor: float
+    low_freq_factor: float
+    original_max_position_embeddings: int
+    rope_type: str
 
 
 class RQTransformerModelArgs(BaseModel):
@@ -19,6 +28,7 @@ class RQTransformerModelArgs(BaseModel):
     dim: int
     intermediate_size: int
     rope_base: float = 10_000
+    rope_scaling: Optional[RopeScaling]
     norm_eps: float = 1e-5
     max_seq_len: int = 2048
     dropout: float = 0.0
@@ -233,14 +243,10 @@ class TransformerBlock(nn.Module):
     def __call__(
         self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
     ) -> mx.array:
-        mx.save("first_attn_input_mlx.npy", x)
         h = self.attention_norm(x)
-        mx.save("first_attn_norm_weight_mlx.npy", self.attention_norm.weight)
-        mx.save("first_attn_norm_mlx.npy", h)
-        # TODO this is wrong
-        h = mx.load("first_attn_norm.npy")
-        h = x + self.attention(h, mask=mask, cache=cache)
-        mx.save("first_attn_layer_mlx.npy", h)
+        attn = self.attention(h, mask=mask, cache=cache)
+        mx.save("first_attn_layer_mlx.npy", attn)
+        h = x + attn
         raise ValueError("first hidden")
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
@@ -256,10 +262,25 @@ class Attention(nn.Module):
         n_local_heads = config.fast_n_local_heads if is_fast else config.n_local_heads
         head_dim = config.fast_head_dim if is_fast else config.head_dim
 
-        self.rope = nn.RoPE(
-            int(dim / n_head),
-            traditional=True,
-            base=config.rope_base,
+        self.rope = (
+            Llama3RoPE(
+                dims=int(dim / n_head),
+                max_position_embeddings=2048,
+                traditional=True,
+                base=int(config.rope_base),
+                scaling_config={
+                    "factor": config.rope_scaling.factor,
+                    "low_freq_factor": config.rope_scaling.low_freq_factor,
+                    "high_freq_factor": config.rope_scaling.high_freq_factor,
+                    "old_context_len": config.rope_scaling.original_max_position_embeddings,
+                },
+            )
+            if config.rope_scaling is not None
+            else nn.RoPE(
+                int(dim / n_head),
+                traditional=False,
+                base=config.rope_base,
+            )
         )
 
         total_head_dim = (n_head + 2 * n_local_heads) * head_dim
@@ -290,7 +311,7 @@ class Attention(nn.Module):
         kv_size = self.n_local_heads * self.head_dim
         raw = qkv.split([self.dim, self.dim + kv_size], axis=-1)
         q, k, v = raw
-        mx.save("first_attn_q_mlx.npy", q)
+
         q = q.reshape((bsz, seqlen, self.n_head, self.head_dim))
         k = k.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
         v = v.reshape((bsz, seqlen, self.n_local_heads, self.head_dim))
@@ -310,7 +331,8 @@ class Attention(nn.Module):
             q=q, k=k, v=v, scale=self.scale, mask=mask
         )
         output = output.transpose(0, 2, 1, 3).reshape(bsz, seqlen, -1)
-        return self.wo(output)
+        out_proj = self.wo(output)
+        return out_proj
 
 
 class MLP(nn.Module):

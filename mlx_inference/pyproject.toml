@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.115.6",
     "huggingface-hub>=0.27.1",
     "mlx==0.22.0",
+    "mlx-lm>=0.22.0",
     "numpy>=2.0.2",
     "pydantic>=2.10.5",
     "pydub>=0.25.1",
