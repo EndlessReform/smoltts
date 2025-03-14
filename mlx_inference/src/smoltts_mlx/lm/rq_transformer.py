@@ -192,7 +192,6 @@ class RQTransformer(nn.Module):
             x = layer(x, mask=mask, cache=layer_cache)
 
         x = x[:, -1, :]  # Only take the last token for generation
-        raise ValueError("Embeddings tested")
         slow_out = self.norm(x)
         if self.output is not None:
             token_logits = self.output(slow_out)
@@ -245,9 +244,7 @@ class TransformerBlock(nn.Module):
     ) -> mx.array:
         h = self.attention_norm(x)
         attn = self.attention(h, mask=mask, cache=cache)
-        mx.save("first_attn_layer_mlx.npy", attn)
         h = x + attn
-        raise ValueError("first hidden")
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 

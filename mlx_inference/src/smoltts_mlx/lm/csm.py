@@ -41,14 +41,14 @@ class CSMModel(nn.Module):
         self, inputs: mx.array, prompt_masks: mx.array, cache: Optional[List[Any]]
     ) -> Tuple[mx.array, mx.array]:
         x = self._embed_tokens(inputs, prompt_masks)
-        print(x.shape)
         mask = create_attention_mask(x, cache) if x.shape[1] > 1 else None
 
         for layer, layer_cache in zip(self.layers, cache or [None] * len(self.layers)):
             x = layer(x, mask=mask, cache=layer_cache)
 
+        x = self.norm(x)
+
         x = x[:, -1, :]  # take last token for generation
-        mx.save("final_x_mlx.npy", x.astype(mx.float32))
         c0_logits = self.codebook0_head(x)
         return (c0_logits, x)
 
