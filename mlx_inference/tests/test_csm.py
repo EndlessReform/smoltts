@@ -7,9 +7,10 @@ from tokenizers import Tokenizer
 from smoltts_mlx.lm.rq_transformer import (
     RQTransformerModelArgs,
 )
-from smoltts_mlx.lm.csm import CSM
+from smoltts_mlx.lm.csm import CSMModel
 from smoltts_mlx.lm.config import ModelType
 from smoltts_mlx.lm.generate import SingleBatchGenerator
+from smoltts_mlx.lm.utils.prompt import CSMPromptEncoder
 
 parser = argparse.ArgumentParser(
     description="A simple one-off CLI generator for DualAR models"
@@ -27,15 +28,24 @@ def main():
     load_start_time = time.time()
     config = RQTransformerModelArgs.from_json_file(str(checkpoint_dir / "config.json"))
     tokenizer = Tokenizer.from_file(str(checkpoint_dir / "tokenizer.json"))
+    prompt_encoder = CSMPromptEncoder(tokenizer)
 
-    model = CSM(config, model_type)
+    model = CSMModel(config, model_type)
     model_path = str(checkpoint_dir / "model.safetensors")
     model.load_weights(model_path, strict=True)
     # model = model.apply(lambda p: p.astype(mx.float32))
     mx.eval(model.parameters())
     model.eval()
     load_end_time = time.time()
+
     print(f"Loaded model and config in {load_end_time - load_start_time:.3f} seconds")
+
+    text = "[0]okay good! im happy enough with this at least its working and yes i know! I feel i take the lazy approach which turns to be the most painful approach"
+    curr_tokens, curr_tokens_mask = prompt_encoder.tokenize_text(text)
+
+    curr_tokens = curr_tokens[mx.newaxis, :, :]
+    curr_tokens_mask = curr_tokens_mask[mx.newaxis, :, :]
+
     raise ValueError("TODO")
 
     # Initialize cache

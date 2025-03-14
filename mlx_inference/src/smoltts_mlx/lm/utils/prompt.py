@@ -1,7 +1,7 @@
 import mlx.core as mx
 import tokenizers
 from tokenizers import Tokenizer
-from typing import Optional
+from typing import Optional, Tuple
 
 from smoltts_mlx.lm.config import ModelType
 from smoltts_mlx.lm.rq_transformer import RQTransformer
@@ -61,3 +61,38 @@ class FishPromptEncoder:
         im_end = self.tokenize_text("<|im_end|>\n")
         block = mx.concat([vq_block, im_end], axis=1)
         return block
+
+
+class CSMPromptEncoder:
+    tokenizer: Tokenizer
+
+    def __init__(
+        self,
+        tokenizer: Tokenizer,
+        num_codebooks: int = 32,
+    ):
+        self.tokenizer = tokenizer
+        self.depth = num_codebooks
+
+    def tokenize_text(self, text: str) -> Tuple[mx.array, mx.array]:
+        text_codes: tokenizers.Encoding = self.tokenizer.encode(
+            text, add_special_tokens=True
+        )
+        tokens = mx.array(text_codes.ids, dtype=mx.int64)[:, mx.newaxis]
+        text_frame = mx.concat(
+            [mx.zeros([tokens.shape[0], self.depth], dtype=mx.int64), tokens], axis=-1
+        )
+        text_frame_mask = text_frame != 0
+        return (text_frame, text_frame_mask)
+
+    def tokenize_audio(self, mimi_codes: mx.array):
+        assert mimi_codes.ndim == 2
+        mimi_codes = mimi_codes.transpose(0, 1)
+        eos_frame = mx.zeros([mimi_codes.shape[0], 1])
+        # TODO is this right?
+        audio_frame = mx.concat([mimi_codes, eos_frame], axis=0)
+        audio_frame = mx.concat(
+            [audio_frame, mx.zeros([audio_frame.shape[0], 1])], axis=1
+        )
+        audio_frame_mask = audio_frame != 0
+        return (audio_frame, audio_frame_mask)
