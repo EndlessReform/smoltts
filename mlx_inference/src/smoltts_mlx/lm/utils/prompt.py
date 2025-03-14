@@ -7,7 +7,7 @@ from smoltts_mlx.lm.config import ModelType
 from smoltts_mlx.lm.rq_transformer import RQTransformer
 
 
-class PromptEncoder:
+class FishPromptEncoder:
     tokenizer: Tokenizer
     depth: int
     model_type: ModelType

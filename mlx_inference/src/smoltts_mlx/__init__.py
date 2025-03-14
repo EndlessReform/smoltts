@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from smoltts_mlx.codec.mimi import load_mimi
 from smoltts_mlx.lm.config import ModelType
-from smoltts_mlx.lm.utils.prompt import PromptEncoder
+from smoltts_mlx.lm.utils.prompt import FishPromptEncoder
 from smoltts_mlx.lm.rq_transformer import (
     RQTransformer,
     RQTransformerModelArgs,
@@ -50,7 +50,7 @@ class SmolTTS:
         mx.eval(model.parameters())
         model.eval()
 
-        prompt_encoder = PromptEncoder.from_model(tokenizer, model)
+        prompt_encoder = FishPromptEncoder.from_model(tokenizer, model)
         codec = load_mimi()
 
         self.lm = model

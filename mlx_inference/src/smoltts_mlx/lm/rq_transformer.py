@@ -224,9 +224,10 @@ class TransformerBlock(nn.Module):
     def __init__(self, config: RQTransformerModelArgs, is_fast: bool = False):
         super().__init__()
         self.attention = Attention(config, is_fast)
-        self.feed_forward = MLP(config)
-        self.ffn_norm = nn.RMSNorm(dims=config.dim, eps=config.norm_eps)
-        self.attention_norm = nn.RMSNorm(config.dim, config.norm_eps)
+        self.feed_forward = MLP(config, is_fast)
+        dim = config.fast_dim if is_fast else config.dim
+        self.ffn_norm = nn.RMSNorm(dims=dim, eps=config.norm_eps)
+        self.attention_norm = nn.RMSNorm(dim, config.norm_eps)
 
     def __call__(
         self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
@@ -241,27 +242,34 @@ class Attention(nn.Module):
         super().__init__()
         # GQA: groups split hidden dim evenly between them
         assert config.dim % config.n_head == 0
+        dim = config.fast_dim if is_fast else config.dim
+        n_head = config.fast_n_head if is_fast else config.n_head
+        n_local_heads = config.fast_n_local_heads if is_fast else config.n_local_heads
+        head_dim = config.fast_head_dim if is_fast else config.head_dim
 
         self.rope = nn.RoPE(
-            int(config.dim / config.n_head), traditional=True, base=config.rope_base
+            int(dim / n_head),
+            traditional=True,
+            base=config.rope_base,
         )
 
-        total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
+        total_head_dim = (n_head + 2 * n_local_heads) * head_dim
+
         self.wqkv = nn.Linear(
-            input_dims=config.dim,
+            input_dims=dim,
             output_dims=total_head_dim,
             bias=config.attention_qkv_bias,
         )
-        self.wo = nn.Linear(config.dim, config.dim, bias=False)
+        self.wo = nn.Linear(dim, dim, bias=False)
 
         self.n_local_heads, self.n_head, self.head_dim, self.dim = (
-            config.n_local_heads,
-            config.n_head,
-            config.head_dim,
-            config.dim,
+            n_local_heads,
+            n_head,
+            head_dim,
+            dim,
         )
         # Manually apply $\sqrt{d_k}$
-        self.scale = config.head_dim**-0.5
+        self.scale = head_dim**-0.5
 
     def __call__(
         self, x: mx.array, mask: Optional[mx.array] = None, cache: Optional[Any] = None
@@ -296,12 +304,17 @@ class Attention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, config: RQTransformerModelArgs) -> None:
+    def __init__(self, config: RQTransformerModelArgs, is_fast=True) -> None:
         super().__init__()
 
-        self.w1 = nn.Linear(config.dim, config.intermediate_size, bias=False)
-        self.w3 = nn.Linear(config.dim, config.intermediate_size, bias=False)
-        self.w2 = nn.Linear(config.intermediate_size, config.dim, bias=False)
+        dim = config.fast_dim if is_fast else config.dim
+        intermediate_size = (
+            config.fast_intermediate_size if is_fast else config.intermediate_size
+        )
+
+        self.w1 = nn.Linear(dim, intermediate_size, bias=False)
+        self.w3 = nn.Linear(dim, intermediate_size, bias=False)
+        self.w2 = nn.Linear(intermediate_size, dim, bias=False)
 
     def __call__(self, x) -> mx.array:
         return self.w2(nn.silu(self.w1(x)) * self.w3(x))
