@@ -52,6 +52,19 @@ class CSMModel(nn.Module):
         c0_logits = self.codebook0_head(x)
         return (c0_logits, x)
 
+    def forward_generate_fast(
+        self, x: mx.array, cache: List[Any], codebook_idx: int
+    ) -> mx.array:
+        mask = create_attention_mask(x, cache) if x.shape[1] >= 1 else None
+        x = self.fast_project_in(x)
+
+        for layer, layer_cache in zip(self.fast_layers, cache):
+            x = layer(x, mask=mask, cache=layer_cache)
+
+        fast_out = self.fast_norm(x)
+        ci_logits = fast_out[:, -1, :] @ self.audio_head[codebook_idx - 1]
+        return ci_logits
+
     def embed_audio(self, codebook: int, tokens: mx.array) -> mx.array:
         return self.codebook_embeddings(tokens + codebook * self.config.codebook_size)
 
