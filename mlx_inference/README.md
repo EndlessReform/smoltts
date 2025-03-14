@@ -202,3 +202,5 @@ From the root of this repo:
 ```bash
 uv sync --all-packages
 ```
+
+### Creating CSM init
