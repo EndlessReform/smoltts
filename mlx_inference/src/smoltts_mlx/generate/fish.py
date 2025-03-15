@@ -7,13 +7,7 @@ from typing import Any, Optional, List
 from smoltts_mlx.lm.rq_transformer import RQTransformer
 from smoltts_mlx.lm.cache import make_prompt_cache, KVCache
 from smoltts_mlx.lm.utils.samplers import min_p_sampling
-
-
-class GenerationSettings(BaseModel):
-    default_temp: float = Field(default=0.7)
-    default_fast_temp: Optional[float] = Field(default=0.7)
-    min_p: Optional[float] = Field(default=None)
-    max_new_tokens: int = Field(default=1024)
+from smoltts_mlx.generate.utils import GenerationSettings
 
 
 class VQToken(BaseModel):

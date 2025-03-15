@@ -15,7 +15,7 @@ from smoltts_mlx.lm.rq_transformer import (
     TokenConfig,
 )
 from smoltts_mlx.lm.cache import make_prompt_cache
-from smoltts_mlx.lm.generate import (
+from smoltts_mlx.generate.fish import (
     generate_blocking,
     SingleBatchGenerator,
     GenerationSettings,
