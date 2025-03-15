@@ -117,6 +117,7 @@ def load_mimi(format: str = "fp32") -> MimiModel:
     # despite the entire API surface being designed to mimic pytorch, because it's faster on apple silicon, and then
     # "helpfully" leaked that abstraction onto me.
     # But the convtrans1d is DIFFERENT yet again.
+    # I'll save the file in a better format later.
     def is_convtrans1d(key) -> bool:
         return (
             # Decoder only

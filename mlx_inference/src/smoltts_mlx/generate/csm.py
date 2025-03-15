@@ -1,5 +1,8 @@
 import mlx.core as mx
+from pathlib import Path
+from huggingface_hub import snapshot_download
 from typing import Optional, List
+from tokenizers import Tokenizer
 
 from smoltts_mlx.lm.cache import make_prompt_cache, KVCache
 from smoltts_mlx.lm.csm import CSMModel
@@ -26,7 +29,6 @@ class SingleBatchGenerator:
         generation_settings: GenerationSettings,
     ):
         self.model = model
-        # TODO handle
         self.n_generated = 0
         self.max_new_tokens = (
             generation_settings.max_new_tokens
@@ -61,20 +63,13 @@ class SingleBatchGenerator:
         c0_embed = self.model.embed_audio(0, c0_sample)
         curr_h = mx.concat([hidden_states[:, mx.newaxis, :], c0_embed], axis=1)
         curr_sample = c0_sample
-        mx.save("curr_h_mlx", curr_h)
 
         decoder_cache = make_prompt_cache(self.model, is_fast=True)
         for i in range(1, self.model.config.num_codebooks):
             code_logits = self.model.forward_generate_fast(
                 curr_h, decoder_cache, codebook_idx=i
             )
-            # if i == 1:
-            #     mx.save("first_residual_code_mlx", code_logits)
-            # if i == 2:
-            #     mx.save("second_residual_code_mlx", code_logits)
-            #     raise ValueError("FUCK")
-            # # TODO
-            # ci_sample = mx.argmax(code_logits, keepdims=True)
+            # TODO make this configurable
             ci_sample = top_k_sampling(code_logits, top_k=64, temperature=0.95)[
                 mx.newaxis, :
             ]
