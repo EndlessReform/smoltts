@@ -15,3 +15,4 @@ inits
 mlx_trace*
 pytorch_trace.json
 !docs/examples/*.wav
+!mlx_inference/tests/sky.wav
